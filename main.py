@@ -1,4 +1,7 @@
-import flet as ft
+import streamlit as str
+
+# Configurazione pagina per Mobile PWA
+str.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
 DATABASE_PRODOTTI = [
     {
@@ -35,58 +38,24 @@ DATABASE_PRODOTTI = [
     }
 ]
 
-def main(page: ft.Page):
-    page.title = "L'Inciarmo della Spesa 🛒"
-    page.theme_mode = ft.ThemeMode.LIGHT
-    page.scroll = "adaptive"
-    page.padding = ft.padding.only(top=10, left=15, right=15, bottom=10)
+str.title("L'Inciarmo della Spesa 🛒")
+str.caption("Trova i produttori reali dietro i brand da discount")
 
-    lista_prodotti = ft.ListView(expand=True, spacing=10, padding=ft.padding.only(top=10))
+# Barra di ricerca reattiva
+query = str.text_input("Cerca stabilimento, discount o marca...", placeholder="Es. Eurospin, IT 03 3 CE...")
 
-    def render_cards(filtro=""):
-        lista_prodotti.controls.clear()
-        for p in DATABASE_PRODOTTI:
-            if any(filtro.lower() in str(value).lower() for value in p.values()):
-                lista_prodotti.controls.add(
-                    ft.Card(
-                        elevation=2,
-                        content=ft.Container(
-                            padding=15,
-                            content=ft.Column([
-                                ft.Row([
-                                    ft.Text(p["categoria"].upper(), size=11, color=ft.colors.BLUE_700, weight=ft.FontWeight.BOLD),
-                                    ft.Text(p["bollino"], size=12, weight=ft.FontWeight.BOLD)
-                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Text(f"Discount: {p['discount']}", size=15, weight=ft.FontWeight.BOLD),
-                                ft.Text(f"💎 Marca: {p['marca']}", size=14, color=ft.colors.GREEN_700, weight=ft.FontWeight.W_500),
-                                ft.Divider(height=10, thickness=0.5),
-                                ft.Text(f"🏭 Stabilimento: {p['stabilimento']}", size=11, italic=True, color=ft.colors.GREY_600),
-                                ft.Text(p["nota"], size=12, color=ft.colors.GREY_800)
-                            ], spacing=5)
-                        )
-                    )
-                )
-        page.update()
+# Filtro e rendering dinamico
+for p in DATABASE_PRODOTTI:
+    if not query or any(query.lower() in str(value).lower() for value in p.values()):
+        with str.container(border=True):
+            col1, col2 = str.columns([3, 1])
+            with col1:
+                str.markdown(f"**{p['discount']}**")
+                str.markdown(f"💎 *Equivalente a:* **{p['marca']}**")
+            with col2:
+                str.caption(f"**{p['bollino']}**")
+            
+            str.divider()
+            str.caption(f"🏭 Stabilimento: {p['stabilimento']} | Categoria: {p['categoria']}")
+            str.write(p['nota'])
 
-    barra_ricerca = ft.TextField(
-        label="Cerca stabilimento, discount o marca...",
-        prefix_icon=ft.icons.SEARCH,
-        on_change=lambda e: render_cards(e.control.value),
-        border_radius=10,
-        text_size=14,
-        content_padding=10
-    )
-
-    page.add(
-        ft.Column([
-            ft.Text("L'Inciarmo", size=26, weight=ft.FontWeight.BOLD, color=ft.colors.BLUE_900),
-            ft.Text("Trova i produttori reali dietro i brand da discount", size=12, color=ft.colors.GREY_600),
-            ft.Container(height=5),
-            barra_ricerca,
-        ], spacing=2),
-        lista_prodotti
-    )
-    
-    render_cards()
-
-app = ft.app(target=main, assets_dir="assets", view=ft.AppView.WEB_BROWSER)
