@@ -3,4 +3,5 @@ st-theme
 st-gsheets-connection
 requests
 pandas
-
+psycopg2-binary
+SQLAlchemy
