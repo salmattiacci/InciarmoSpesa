@@ -10,23 +10,23 @@ st.set_page_config(
 )
 
 st.title("L'Inciarmo della Spesa 🛒")
-st.caption("Ricerca integrata: Database Postgres (Supabase) + Live API Open Food Facts")
+st.caption("Ricerca integrata: Database Postgres (Supabase) + Live API Open Food Facts (Bypass Cloud)")
 
-# Inizializzazione della variabile di connessione
+# Inizializzazione della variabile di connessione Postgres
 conn = None
 
-# Inizializzazione Connettore Nativo PostgreSQL via SQLAlchemy URL
+# Connessione nativa a Supabase via SQLAlchemy stringa URL
 try:
     conn = st.connection("postgresql", type="sql")
 except Exception as e:
     st.error(f"Impossibile connettersi al database di produzione: {e}")
 
-# Navigazione Tab ottimizzata per smartphone
+# Navigazione Tab per smartphone
 tab_cerca, tab_segnala = st.tabs(["🔍 Cerca Prodotti", "📢 Segnala uno Sgamo"])
 
-# --- TAB 1: RICERCA LOCALE + ONLINE LIVE ---
+# --- TAB 1: RICERCA IBRIDA (LOCALE + WEB LIVE) ---
 with tab_cerca:
-    query = st.text_input("Cerca stabilimento, discount, marca o parola chiave...", placeholder="Es. biscotti, Coop, Eurospin, Galbani...")
+    query = st.text_input("Cerca stabilimento, discount, marca o parola chiave...", placeholder="Es. biscotti, Coop, Eurospin, IT 03 3 CE...")
 
     if query:
         # --- FASE 1: RICERCA SUL TUO DB SUPABASE ---
@@ -59,25 +59,26 @@ with tab_cerca:
         if not risultati_locali:
             st.info("Nessun match nel database privato. Controllo online sul database mondiale...")
 
-        # --- FASE 2: RICERCA LIBERA LIVE ONLINE (Bypass dei blocchi) ---
+        # --- FASE 2: RICERCA TESTUALE LIBERA LIVE ONLINE (Sintassi testata su Termux) ---
         st.subheader("🌐 Risultati in Tempo Reale dal Web")
         with st.spinner(f"Ricerca di '{query}' su Open Food Facts..."):
             try:
-                # Usiamo l'endpoint di ricerca libera globale V2 (Cerca ovunque: marchi, nomi, negozi)
                 url = "https://it.openfoodfacts.org/api/v2/search"
                 
+                # Parametri ottimizzati e geolocalizzati per evitare sovraccarichi
                 params = {
-                    "search_terms": query,      # Parola libera digitata dall'utente
+                    "search_terms": query,
                     "search_simple": "1",
                     "action": "process",
-                    "fields": "product_name,brands,emb_codes,categories",
-                    "page_size": 15             # Mostra i primi 15 risultati rilevanti
+                    "fields": "product_name,brands,emb_codes",
+                    "page_size": 12,
+                    "cc": "it",  # Forza il database italiano
+                    "lc": "it"   # Forza la lingua italiana
                 }
                 
-                # Sgamo tecnico: ci spacciamo per l'App Ufficiale Android/iOS di Open Food Facts 
-                # Questo bypassa i controlli Nginx ed evita i 403
+                # L'User-Agent identico a quello che ha risposto con successo su Termux
                 headers = {
-                    "User-Agent": "OpenFoodFacts - Android - Version 4.2.3 - SgamoApp"
+                    "User-Agent": "InciarmoSpesaApp/1.0 (Contatto: salmattiacci@github.com)"
                 }
                 
                 res = requests.get(url, params=params, headers=headers, timeout=6)
@@ -93,7 +94,6 @@ with tab_cerca:
                             brand = p.get("brands", "Marca non specificata").strip()
                             emb = p.get("emb_codes", "").strip().upper()
                             
-                            # Filtriamo i risultati vuoti
                             if name:
                                 prodotti_validi += 1
                                 with st.container(border=True):
@@ -103,18 +103,18 @@ with tab_cerca:
                                         st.caption(f"Marca dichiarata: *{brand}*")
                                     with col2:
                                         if emb:
-                                            # Pulizia del codice bollo (prende il primo se ce ne sono molti)
+                                            # Isola il primo bollo CE utile e pulisce la stringa
                                             emb_clean = emb.split(",")[0].replace("EMB", "").strip()
                                             st.warning(f"🏭 {emb_clean}")
                                         else:
                                             st.caption("❌ No Bollo CE")
                         
                         if prodotti_validi == 0:
-                            st.warning("Nessun prodotto valido con nome trovato per questa ricerca.")
+                            st.warning("Nessun prodotto valido con nome trovato online.")
                     else:
                         st.warning("Nessun riscontro trovato online. Prova a cambiare parole chiave.")
                 else:
-                    st.error(f"Il server di mappatura ha rifiutato la richiesta (Codice {res.status_code}).")
+                    st.error(f"Il server remoto ha risposto con codice {res.status_code}. I server cloud sono temporaneamente limitati dal firewall di Open Food Facts.")
                     
             except Exception as e:
                 st.error(f"Errore di rete durante la ricerca online: {e}")
@@ -122,7 +122,7 @@ with tab_cerca:
 # --- TAB 2: SCRITTURA DATI REALI (CROWDSOURCING) ---
 with tab_segnala:
     st.subheader("Hai scoperto un nuovo inciarmo?")
-    st.caption("Inserisci i dati. Verranno salvati istantaneamente nel database PostgreSQL di Supabase.")
+    st.caption("Inserisci i dati per salvarli istantaneamente nel database PostgreSQL di Supabase.")
     
     with st.form("segnalazione_form", clear_on_submit=True):
         sc_stabilimento = st.text_input("Codice Stabilimento / Bollo CE *", placeholder="Es. IT 03 3 CE")
