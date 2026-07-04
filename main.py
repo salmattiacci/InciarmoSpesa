@@ -2,26 +2,31 @@ import streamlit as st
 import pandas as pd
 import requests
 
-# 1. Configurazione UI Mobile
-st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
+# 1. Configurazione UI Mobile-First
+st.set_page_config(
+    page_title="L'Inciarmo della Spesa", 
+    page_icon="🛒", 
+    layout="centered"
+)
+
 st.title("L'Inciarmo della Spesa 🛒")
-st.caption("Ricerca integrata: Database Postgres + Live API Open Food Facts")
+st.caption("Ricerca integrata: Database Postgres (Supabase) + Live API Open Food Facts")
 
 # Inizializzazione della variabile di connessione
 conn = None
 
-# Inizializzazione Connettore Nativo PostgreSQL
+# Inizializzazione Connettore Nativo PostgreSQL via SQLAlchemy URL
 try:
     conn = st.connection("postgresql", type="sql")
 except Exception as e:
     st.error(f"Impossibile connettersi al database di produzione: {e}")
 
-# Navigazione Tab
+# Navigazione Tab ottimizzata per smartphone
 tab_cerca, tab_segnala = st.tabs(["🔍 Cerca Prodotti", "📢 Segnala uno Sgamo"])
 
 # --- TAB 1: RICERCA LOCALE + ONLINE LIVE ---
 with tab_cerca:
-    query = st.text_input("Cerca stabilimento, discount o marca...", placeholder="Es. biscotti, snack, latticini...")
+    query = st.text_input("Cerca stabilimento, discount, marca o categoria...", placeholder="Es. biscotti, snack, Eurospin, IT...")
 
     if query:
         # --- FASE 1: RICERCA SUL TUO DB SUPABASE ---
@@ -30,8 +35,10 @@ with tab_cerca:
         
         if conn is not None:
             try:
+                # Interroghiamo la tabella su Postgres (cache veloce di 5 secondi)
                 df = conn.query("SELECT * FROM prodotti;", ttl=5)
                 if not df.empty:
+                    # Filtro universale sulle colonne del DataFrame
                     mask = df.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
                     df_filtrato = df[mask]
                     
@@ -49,21 +56,42 @@ with tab_cerca:
                                 st.caption(f"🏭 Stabilimento: {row['stabilimento']} | Categoria: {row['categoria']}")
                                 st.write(row['nota'])
             except Exception as e:
-                st.error(f"Errore lettura DB: {e}")
+                st.error(f"Errore lettura DB locale: {e}")
         
         if not risultati_locali:
-            st.info("Nessun match esatto trovato nel database locale. Controllo online...")
+            st.info("Nessun match esatto trovato nel database privato. Controllo online sul catalogo aperto...")
 
-        # --- FASE 2: RICERCA LIVE ONLINE (ENDPOINT STATICO PER CATEGORIA) ---
+        # --- FASE 2: RICERCA LIVE ONLINE (CON DIZIONARIO DI CORREZIONE) ---
         st.subheader("🌐 Risultati in Tempo Reale dal Web")
-        with st.spinner("Interrogando il catalogo aperto..."):
+        with st.spinner("Interrogando Open Food Facts..."):
             try:
-                # Formattiamo la query in minuscolo per l'endpoint di OFF (es. "biscotti" -> "biscotti")
-                categoria_clean = query.lower().strip().replace(" ", "-")
+                # Pulizia base dell'input utente per l'URL di OFF
+                scelta_utente = query.lower().strip().replace(" ", "-")
                 
-                # Utilizziamo l'endpoint di sfeccia per categoria, storicamente esente da blocchi WAF pesanti
+                # Dizionario di mappatura per i termini più comuni verso i tag ufficiali di OFF
+                mappa_categorie = {
+                    "snack": "snacks",
+                    "patatine": "patatine-fritte",
+                    "patatina": "patatine-fritte",
+                    "merendine": "merendine",
+                    "merendina": "merendine",
+                    "cioccolato": "cioccolati",
+                    "biscotto": "biscotti",
+                    "succo": "succhi-di-frutta",
+                    "succhi": "succhi-di-frutta",
+                    "latte": "latti",
+                    "yogurt": "iogurt",
+                    "the": "tè",
+                    "te": "tè",
+                    "pasta": "paste"
+                }
+                
+                # Fallback sulla parola dell'utente se non presente in mappa
+                categoria_clean = mappa_categorie.get(scelta_utente, scelta_utente)
+                
                 url = f"https://it.openfoodfacts.org/categoria/{categoria_clean}.json"
                 
+                # User-Agent che simula un browser mobile per abbattere i blocchi 403
                 headers = {
                     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
                 }
@@ -75,7 +103,7 @@ with tab_cerca:
                     products = data.get("products", [])
                     
                     if products:
-                        # Prendiamo al massimo i primi 10 risultati per non appesantire la UI su mobile
+                        # Mostriamo al massimo i primi 10 risultati live per non saturare lo smartphone
                         for p in products[:10]:
                             name = p.get("product_name", "").strip()
                             brand = p.get("brands", "Brand non specificato").strip()
@@ -86,7 +114,7 @@ with tab_cerca:
                                     col1, col2 = st.columns([3, 1])
                                     with col1:
                                         st.markdown(f"**{name}**")
-                                        st.caption(f"Marca/Produttore dichiarato: *{brand}*")
+                                        st.caption(f"Marca/Produttore: *{brand}*")
                                     with col2:
                                         if emb:
                                             st.warning(f"🏭 {emb.split(',')[0]}")
@@ -95,37 +123,43 @@ with tab_cerca:
                     else:
                         st.warning(f"Nessun prodotto trovato online per la categoria '{categoria_clean}'.")
                 elif res.status_code == 404:
-                    st.warning(f"La categoria '{categoria_clean}' non è stata riconosciuta dal sistema online. Prova con termini generici come 'biscotti', 'snack', 'succhi-di-frutta'.")
+                    st.warning(f"La categoria '{categoria_clean}' non è riconosciuta online. Prova con parole plurali o macro-categorie (es. 'biscotti', 'snacks', 'paste').")
                 else:
-                    st.error(f"Il server di mappatura ha risposto con codice {res.status_code}. Tento il recupero via fallback strutturato.")
+                    st.error(f"Il server di mappatura web ha risposto con codice di errore {res.status_code}.")
                     
             except Exception as e:
                 st.error(f"Impossibile completare la ricerca online: {e}")
 
-# --- TAB 2: SCRITTURA DATI REALI ---
+# --- TAB 2: SCRITTURA DATI REALI (CROWDSOURCING) ---
 with tab_segnala:
     st.subheader("Hai scoperto un nuovo inciarmo?")
-    st.caption("Inserisci i dati. Verranno salvati istantaneamente nel database PostgreSQL.")
+    st.caption("Inserisci i dati. Verranno salvati istantaneamente nel database PostgreSQL di Supabase.")
     
     with st.form("segnalazione_form", clear_on_submit=True):
-        sc_stabilimento = st.text_input("Codice Stabilimento / Bollo CE *")
-        sc_discount = st.text_input("Prodotto e Supermercato *")
-        sc_marca = st.text_input("Prodotto di Marca Equivalente *")
+        sc_stabilimento = st.text_input("Codice Stabilimento / Bollo CE *", placeholder="Es. IT 03 3 CE")
+        sc_discount = st.text_input("Prodotto e Supermercato *", placeholder="Es. Frollini con panna Eurospin")
+        sc_marca = st.text_input("Prodotto di Marca Equivalente *", placeholder="Es. Tarallucci Mulino Bianco")
         sc_categoria = st.selectbox("Categoria", ["Latticini", "Dolci", "Snack", "Bevande", "Altro"])
-        sc_nota = st.text_area("Note sulla ricetta")
+        sc_nota = st.text_area("Note sulla ricetta (ingredienti, sapore...)")
         
         submitted = st.form_submit_button("Invia nel DB Real-Time")
         if submitted:
             if conn is not None:
                 if sc_stabilimento and sc_discount and sc_marca:
                     try:
+                        # Esecuzione del comando SQL CRUD nativo
                         with conn.session as session:
                             sql = """
+                                INSERT INTO prodotti (stabilimento, category, discount, marca, nota, bollino)
+                                VALUES (:stabilimento, :categoria, :discount, :marca, :nota, :bollino);
+                            """
+                            # Nota: Se nel tuo DB la colonna si chiama 'categoria', usa :categoria nel mapping
+                            sql_corretto = """
                                 INSERT INTO prodotti (stabilimento, categoria, discount, marca, nota, bollino)
                                 VALUES (:stabilimento, :categoria, :discount, :marca, :nota, :bollino);
                             """
                             session.execute(
-                                sql, 
+                                sql_corretto, 
                                 {
                                     "stabilimento": sc_stabilimento, 
                                     "categoria": sc_categoria, 
@@ -144,3 +178,4 @@ with tab_segnala:
                     st.error("I campi contrassegnati con * sono obbligatori.")
             else:
                 st.error("Impossibile inviare la segnalazione: database non connesso.")
+
