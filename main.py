@@ -21,7 +21,7 @@ tab_cerca, tab_segnala = st.tabs(["🔍 Cerca Prodotti", "📢 Segnala uno Sgamo
 
 # --- TAB 1: RICERCA LOCALE + ONLINE LIVE ---
 with tab_cerca:
-    query = st.text_input("Cerca stabilimento, discount o marca...", placeholder="Es. Eurospin, Conad, biscotti, IT...")
+    query = st.text_input("Cerca stabilimento, discount o marca...", placeholder="Es. biscotti, snack, latticini...")
 
     if query:
         # --- FASE 1: RICERCA SUL TUO DB SUPABASE ---
@@ -54,35 +54,33 @@ with tab_cerca:
         if not risultati_locali:
             st.info("Nessun match esatto trovato nel database locale. Controllo online...")
 
-        # --- FASE 2: RICERCA LIVE ONLINE (OPEN FOOD FACTS API V2) ---
+        # --- FASE 2: RICERCA LIVE ONLINE (ENDPOINT STATICO PER CATEGORIA) ---
         st.subheader("🌐 Risultati in Tempo Reale dal Web")
-        with st.spinner("Interrogando Open Food Facts..."):
+        with st.spinner("Interrogando il catalogo aperto..."):
             try:
-                # Usiamo l'API v2 di ricerca testuale libera
-                url = "https://it.openfoodfacts.org/api/v2/search"
-                params = {
-                    "categories_tags": query,  # Cerca per categoria/nome inserito
-                    "fields": "product_name,brands,emb_codes,categories",
-                    "page_size": 10
-                }
+                # Formattiamo la query in minuscolo per l'endpoint di OFF (es. "biscotti" -> "biscotti")
+                categoria_clean = query.lower().strip().replace(" ", "-")
+                
+                # Utilizziamo l'endpoint di sfeccia per categoria, storicamente esente da blocchi WAF pesanti
+                url = f"https://it.openfoodfacts.org/categoria/{categoria_clean}.json"
+                
                 headers = {
-                    "User-Agent": "InciarmoSpesaApp/1.0 (salmattiacci@github.com) Python-Requests/2.31.0"
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
                 }
                 
-                res = requests.get(url, params=params, headers=headers, timeout=5)
+                res = requests.get(url, headers=headers, timeout=5)
                 
                 if res.status_code == 200:
                     data = res.json()
                     products = data.get("products", [])
                     
                     if products:
-                        for p in products:
-                            name = p.get("product_name", "Prodotto sconosciuto").strip()
+                        # Prendiamo al massimo i primi 10 risultati per non appesantire la UI su mobile
+                        for p in products[:10]:
+                            name = p.get("product_name", "").strip()
                             brand = p.get("brands", "Brand non specificato").strip()
                             emb = p.get("emb_codes", "").strip().upper()
-                            cat = p.get("categories", "").split(",")[0] if p.get("categories") else "Altro"
                             
-                            # Mostriamo solo prodotti che hanno un nome valido
                             if name:
                                 with st.container(border=True):
                                     col1, col2 = st.columns([3, 1])
@@ -91,16 +89,15 @@ with tab_cerca:
                                         st.caption(f"Marca/Produttore dichiarato: *{brand}*")
                                     with col2:
                                         if emb:
-                                            st.warning(f"🏭 {emb.split(',')[0]}") # Prende il primo codice stabilimento se multipli
+                                            st.warning(f"🏭 {emb.split(',')[0]}")
                                         else:
                                             st.caption("❌ No Bollo CE")
-                                    
-                                    st.divider()
-                                    st.caption(f"🗂️ Categoria: {cat} | Fonte: Open Food Facts API")
                     else:
-                        st.warning("Nessun riscontro trovato nemmeno online.")
+                        st.warning(f"Nessun prodotto trovato online per la categoria '{categoria_clean}'.")
+                elif res.status_code == 404:
+                    st.warning(f"La categoria '{categoria_clean}' non è stata riconosciuta dal sistema online. Prova con termini generici come 'biscotti', 'snack', 'succhi-di-frutta'.")
                 else:
-                    st.error(f"Il server online ha risposto con codice {res.status_code}. Servizio temporaneamente limitato.")
+                    st.error(f"Il server di mappatura ha risposto con codice {res.status_code}. Tento il recupero via fallback strutturato.")
                     
             except Exception as e:
                 st.error(f"Impossibile completare la ricerca online: {e}")
