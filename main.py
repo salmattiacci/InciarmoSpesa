@@ -1,16 +1,19 @@
 import streamlit as st
 import pandas as pd
 
-# Configurazione UI Mobile
+# 1. Configurazione UI Mobile
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 st.title("L'Inciarmo della Spesa 🛒")
 st.caption("Database PostgreSQL dinamico dei produttori reali dietro i brand da discount")
+
+# Inizializzazione della variabile di connessione
+conn = None
 
 # Inizializzazione Connettore Nativo PostgreSQL
 try:
     conn = st.connection("postgresql", type="sql")
 except Exception as e:
-    st.error("Impossibile connettersi al database di produzione.")
+    st.error(f"Impossibile connettersi al database di produzione: {e}")
 
 # Navigazione Tab
 tab_cerca, tab_segnala = st.tabs(["🔍 Cerca Prodotti", "📢 Segnala uno Sgamo"])
@@ -19,37 +22,41 @@ tab_cerca, tab_segnala = st.tabs(["🔍 Cerca Prodotti", "📢 Segnala uno Sgamo
 with tab_cerca:
     query = st.text_input("Cerca stabilimento, discount o marca...", placeholder="Es. Eurospin, Conad, IT...")
 
-    try:
-        # Query SQL dinamica (con cache di 10 secondi per performance su mobile)
-        df = conn.query("SELECT * FROM prodotti;", ttl=10)
-        
-        if not df.empty:
-            if query:
-                mask = df.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
-                df_filtrato = df[mask]
-            else:
-                df_filtrato = df
+    # Controlliamo se la connessione è stata stabilita correttamente
+    if conn is not None:
+        try:
+            # Query SQL dinamica (con cache di 10 secondi)
+            df = conn.query("SELECT * FROM prodotti;", ttl=10)
+            
+            if not df.empty:
+                if query:
+                    mask = df.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
+                    df_filtrato = df[mask]
+                else:
+                    df_filtrato = df
 
-            if df_filtrato.empty:
-                st.warning("Nessun inciarmo trovato. Segnalalo tu!")
+                if df_filtrato.empty:
+                    st.warning("Nessun inciarmo trovato. Segnalalo tu!")
+                else:
+                    for _, row in df_filtrato.iterrows():
+                        with st.container(border=True):
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                st.markdown(f"**{row['discount']}**")
+                                st.markdown(f"💎 *Equivalente a:* **{row['marca']}**")
+                            with col2:
+                                st.caption(f"**{row['bollino']}**")
+                            st.divider()
+                            st.caption(f"🏭 Stabilimento: {row['stabilimento']} | Categoria: {row['categoria']}")
+                            st.write(row['nota'])
             else:
-                for _, row in df_filtrato.iterrows():
-                    with st.container(border=True):
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown(f"**{row['discount']}**")
-                            st.markdown(f"💎 *Equivalente a:* **{row['marca']}**")
-                        with col2:
-                            st.caption(f"**{row['bollino']}**")
-                        st.divider()
-                        st.caption(f"🏭 Stabilimento: {row['stabilimento']} | Categoria: {row['categoria']}")
-                        st.write(row['nota'])
-        else:
-            st.info("Database vuoto.")
-    except Exception as e:
-        st.error(f"Errore di lettura dal database: {e}")
+                st.info("Database vuoto.")
+        except Exception as e:
+            st.error(f"Errore di lettura dal database: {e}")
+    else:
+        st.warning("Funzionalità di ricerca non disponibile: connessione al database assente.")
 
-# --- TAB 2: SCRITTURA DATI REALI (CROWDSOURCING) ---
+# --- TAB 2: SCRITTURA DATI REALI ---
 with tab_segnala:
     st.subheader("Hai scoperto un nuovo inciarmo?")
     st.caption("Inserisci i dati. Verranno salvati istantaneamente nel database PostgreSQL.")
@@ -63,29 +70,31 @@ with tab_segnala:
         
         submitted = st.form_submit_button("Invia nel DB Real-Time")
         if submitted:
-            if sc_stabilimento and sc_discount and sc_marca:
-                try:
-                    # Inserimento CRUD reale tramite SQL
-                    with conn.session as session:
-                        sql = """
-                            INSERT INTO prodotti (stabilimento, categoria, discount, marca, nota, bollino)
-                            VALUES (:stabilimento, :categoria, :discount, :marca, :nota, :bollino);
-                        """
-                        session.execute(
-                            sql, 
-                            {
-                                "stabilimento": sc_stabilimento, 
-                                "categoria": sc_categoria, 
-                                "discount": sc_discount, 
-                                "marca": sc_marca, 
-                                "nota": sc_nota, 
-                                "bollino": "🟡 Da Verificare"
-                            }
-                        )
-                        session.commit()
-                    st.success("Sgamo registrato con successo nel database di Supabase!")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"Errore durante la scrittura sul DB: {e}")
+            if conn is not None:
+                if sc_stabilimento and sc_discount and sc_marca:
+                    try:
+                        with conn.session as session:
+                            sql = """
+                                INSERT INTO prodotti (stabilimento, categoria, discount, marca, nota, bollino)
+                                VALUES (:stabilimento, :categoria, :discount, :marca, :nota, :bollino);
+                            """
+                            session.execute(
+                                sql, 
+                                {
+                                    "stabilimento": sc_stabilimento, 
+                                    "categoria": sc_categoria, 
+                                    "discount": sc_discount, 
+                                    "marca": sc_marca, 
+                                    "nota": sc_nota, 
+                                    "bollino": "🟡 Da Verificare"
+                                }
+                            )
+                            session.commit()
+                        st.success("Sgamo registrato con successo nel database di Supabase!")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"Errore durante la scrittura sul DB: {e}")
+                else:
+                    st.error("I campi contrassegnati con * sono obbligatori.")
             else:
-                st.error("I campi contrassegnati con * sono obbligatori.")
+                st.error("Impossibile inviare la segnalazione: database non connesso.")
