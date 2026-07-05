@@ -4,14 +4,21 @@ on:
   schedule:
     # Gira automaticamente ogni giorno alle 4 del mattino
     - cron: '0 4 * * *'
-  workflow_dispatch: # Ti permette di avviarlo anche a mano con un click su GitHub
+  workflow_dispatch: # Ti permette di avviarlo a mano con un click
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      # Sblocca i permessi di scrittura per fare il push dei dati
+      contents: write
+      
     steps:
     - name: Accedi alla Repository
       uses: actions/checkout@v3
+      with:
+        # Usa il token nativo con i nuovi permessi di scrittura
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Configura Python
       uses: actions/setup-python@v4
@@ -22,7 +29,7 @@ jobs:
       run: |
         pip install requests pandas
 
-    - name: Esegui lo Script di Fetch Data
+    - name: Esegui lo Script Per il Fetching dei Dati
       run: python aggiorna_dati.py
 
     - name: Salva le modifiche su GitHub
@@ -30,5 +37,6 @@ jobs:
         git config --global user.name 'InciarmoBot'
         git config --global user.email 'bot@inciarmo.local'
         git add prodotti.csv
+        # Il commit evita di bloccarsi se i dati sono identici a ieri
         git commit -m "Aggiornamento automatico prodotti da API" || exit 0
         git push
