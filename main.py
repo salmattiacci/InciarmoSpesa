@@ -18,110 +18,47 @@ df_prodotti = carica_dati(GITHUB_RAW_URL)
 
 query = st.text_input("Cerca un prodotto, una marca o un codice stabilimento...", placeholder="Es. biscotti, Coop, Conad, IT...")
 
-if query:
-    if not df_prodotti.empty:
-        # Cerca la parola chiave in tutte le colonne (nome, marca, stabilimento)
-        mask = df_prodotti.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
-        df_filtrato = df_prodotti[mask]
+# Se l'utente non ha cercato nulla, mostriamo l'info e fermiamo l'esecuzione dello script
+if not query:
+    st.info("Digita qualcosa qui sopra per scovare i prodotti gemelli!")
+    st.stop()
+
+# Se il database è vuoto, mostriamo l'errore e fermiamo lo script
+if df_prodotti.empty:
+    st.error("Il database è attualmente vuoto o non raggiungibile su GitHub. Attendi la sincronizzazione.")
+    st.stop()
+
+# --- DA QUI IN POI ESEGUIAMO LA RICERCA (Logica piatta senza ELSE annidati) ---
+mask = df_prodotti.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
+df_filtrato = df_prodotti[mask]
+
+if df_filtrato.empty:
+    st.warning("Nessun incrocio trovato con questa parola chiave. L'algoritmo sta espandendo il database...")
+    st.stop()
+
+st.subheader(f"🔍 Sgami Rilevati ({len(df_filtrato)})")
+
+for _, row in df_filtrato.iterrows():
+    bollino = str(row.get('bollino', ''))
+    
+    if "🟢" in bollino:
+        border_color = "🟢"
+    elif "🟡" in bollino:
+        border_color = "🟡"
+    else:
+        border_color = "🟠"
         
-        if not df_filtrato.empty:
-            st.subheader(f"🔍 Sgami Rilevati ({len(df_filtrato)})")
-            
-            for _, row in df_filtrato.iterrows():
-                # Colora il box in base al livello di inciarmo degli ingredienti
-                bollino = row.get('bollino', '')
-                if "🟢" in str(bollino):
-                    border_color = "🟢"
-                elif "🟡" in str(bollino):
-                    border_color = "🟡"
-                else:
-                    border_color = "🟠"
-                    
-                with st.container(border=True):
-                    st.markdown(f"### {border_color} {row.get('bollino', 'Analizzato')}")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.error(f"**Prodotto A:**")
-                        st.write(row.get('discount', 'N/D'))
-                    with col2:
-                        st.success(f"**Prodotto B:**")
-                        st.write(row.get('marca', 'N/D'))
-                        
-                    st.divider()
-                    st.caption(f"🏭 **Bollo CE di provenienza:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
-                    st.info(f"📋 **Esito Analisi:** {row.get('nota', '')}")
-        else:
-            st.warning("Nessun incrocio trovato con questa parola chiave. L'algoritmo sta espandendo il database...")
-    else:
-        st.error("Il database è attualmente vuoto o non raggiungibile su GitHub. Attendi la sincronizzazione.")
-else:
-    st.info("Digita qualcosa qui sopra per scovare i prodotti gemelli!")
-else:
-                    border_color = "🟠"
-                    
-                with st.container(border=True):
-                    st.markdown(f"### {border_color} {row.get('bollino', 'Analizzato')}")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.error(f"**Prodotto A:**")
-                        st.write(row.get('discount', 'N/D'))
-                    with col2:
-                        st.success(f"**Prodotto B:**")
-                        st.write(row.get('marca', 'N/D'))
-                        
-                    st.divider()
-                    st.caption(f"🏭 **Bollo CE di provenienza:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
-                    st.info(f"📋 **Esito Analisi:** {row.get('nota', '')}")
-        else:
-            st.warning("Nessun incrocio trovato con questa parola chiave. L'algoritmo sta espandendo il database...")
-    else:
-        st.error("Il database è attualmente vuoto o non raggiungibile su GitHub. Attendi la sincronizzazione.")
-else:
-    st.info("Digita qualcosa qui sopra per scovare i prodotti gemelli!")
-else:
-                    border_color = "🟠"
-                    
-                with st.container(border=True):
-                    st.markdown(f"### {border_color} {row.get('bollino')}")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.error(f"**Prodotto A:**")
-                        st.write(row.get('discount'))
-                    with col2:
-                        st.success(f"**Prodotto B:**")
-                        st.write(row.get('marca'))
-                        
-                    st.divider()
-                    st.caption(f"🏭 **Bollo CE di provenienza:** `{row.get('stabilimento')}`")
-                    st.info(f"📋 **Esito Analisi:** {row.get('nota')}")
-        else:
-            st.warning("Nessun incrocio trovato con questa parola chiave. L'algoritmo sta espandendo il database...")
-    else:
-        st.error("Database in fase di sincronizzazione su GitHub. Attendi un istante.")
-        # Filtro universale su tutte le colonne del file CSV
-        mask = df_prodotti.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
-        df_filtrato = df_prodotti[mask]
+    with st.container(border=True):
+        st.markdown(f"### {border_color} {row.get('bollino', 'Analizzato')}")
         
-        if not df_filtrato.empty:
-            st.subheader(f"📦 Risultati Trovati ({len(df_filtrato)})")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.error("**Prodotto A:**")
+            st.write(row.get('discount', 'N/D'))
+        with col2:
+            st.success("**Prodotto B:**")
+            st.write(row.get('marca', 'N/D'))
             
-            for _, row in df_filtrato.iterrows():
-                with st.container(border=True):
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.markdown(f"**{row.get('discount', 'N/D')}**")
-                        st.markdown(f"💎 *Equivalente a:* **{row.get('marca', 'N/D')}**")
-                    with col2:
-                        st.caption(f"**{row.get('bollino', '🟡 Da Verificare')}**")
-                    st.divider()
-                    st.caption(f"🏭 Stabilimento: {row.get('stabilimento', 'N/D')} | Categoria: {row.get('categoria', 'N/D')}")
-                    st.write(row.get('nota', ''))
-        else:
-            st.warning("Nessun inciarmo trovato nel database con questa parola chiave.")
-    else:
-        st.info("Il database è attualmente vuoto o non raggiungibile.")
-else:
-    st.info("Digita qualcosa qui sopra per scovare i prodotti gemelli!")
+        st.divider()
+        st.caption(f"🏭 **Bollo CE di provenienza:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
+        st.info(f"📋 **Esito Analisi:** {row.get('nota', '')}")
