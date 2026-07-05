@@ -5,6 +5,7 @@ import os
 import time
 import random
 
+# Dizionario prezzi medi di mercato in Italia (Marca vs Discount) - Fallback di sicurezza
 LISTINO_PREZZI_MEDIO = {
     "biscuits": {"marca": 2.99, "discount": 1.79},
     "chocolate biscuits": {"marca": 3.49, "discount": 1.99},
@@ -36,21 +37,19 @@ def calcola_somiglianza_ingredienti(ing1, ing2):
 
 def cerca_prezzo_reale_api_sicura(barcode):
     """
-    Interroga un endpoint di ricerca aperto per tentare il recupero del prezzo reale.
-    Usa un sistema super-leggero e sicuro (senza forzature web).
+    Interroga l'API di OFF per tentare il recupero del prezzo reale registrato.
+    Usa un sistema leggero e sicuro con pause umane.
     """
-    # Usiamo l'endpoint di ricerca open-api di OFF o di un indice di spesa pubblico europeo mirrorato
     url = f"https://it.openfoodfacts.org/api/v2/product/{barcode}"
     headers = {"User-Agent": "InciarmoSpesaPrezziBot/5.0 (Privacy-Safe System)"}
     
     try:
-        # Pausa di sicurezza preventiva per simulare comportamento umano ed evitare carichi
+        # Pausa di sicurezza preventiva per simulare comportamento umano
         time.sleep(random.uniform(1.5, 3.0))
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             dati = res.json()
             prodotto = dati.get("product", {})
-            # Proviamo a vedere se nell'indice è registrato un valore di prezzo italiano veritiero
             prezzo = prodotto.get("price_value") or prodotto.get("price")
             if prezzo and str(prezzo).replace('.','',1).isdigit():
                 return round(float(prezzo), 2)
@@ -118,8 +117,6 @@ def esegui_pipeline():
     marchi_discount = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "galbusera", "amo essere bio", "tre mulini", "maribel", "sibamba", "blues"]
     
     lista_prodotti = df_totale_raw.to_dict(orient="records")
-    
-    # Per evitare di fare troppe richieste API esterne in un colpo solo, limitiamo i controlli attivi sui prezzi reali
     contatore_richieste = 0
     
     for i, p1 in enumerate(lista_prodotti):
@@ -147,12 +144,18 @@ def esegui_pipeline():
             match_valido = False
             tipo_match = ""
             
+            # BLOCCO DI SICUREZZA: Identifica se è acqua minerale o bevanda generica mono-ingrediente
+            is_acqua_o_singolo = "water" in cat1.lower() or "acque" in cat1.lower() or "beverages" in cat1.lower()
+            
+            # REQUISITO 1: Stabilimenti identici compilati (Valido sempre, anche per l'acqua)
             if emb1_pulito and emb2_pulito and emb1_pulito != "NAN" and emb2_pulito != "NAN" and emb1_pulito == emb2_pulito:
                 match_valido = True
                 if score > 75: tipo_match = "🟢 Identico (Stessa Fabbrica + Ricetta)"
                 elif score > 45: tipo_match = "🟡 Gemello (Stessa Fabbrica + Ricetta Simile)"
                 else: tipo_match = "🟠 Solo Stessa Fabbrica"
-            elif cat1 == cat2 and cat1 != "Altro" and score >= 70:
+            
+            # REQUISITO 2: Stessa categoria e ricetta simile MA escludendo tassativamente le acque
+            elif cat1 == cat2 and cat1 != "Altro" and score >= 70 and not is_acqua_o_singolo:
                 match_valido = True
                 tipo_match = "🟢 Identico (Analisi Ricette DB)" if score > 85 else "🟡 Gemello (Ricetta Simile)"
 
@@ -167,7 +170,7 @@ def esegui_pipeline():
                     m_discount, n_discount, e_barcode = brand2, name2, code2
                     m_marca, n_marca, m_barcode = brand1, name1, code1
                 
-                # Otteniamo i prezzi (cerca online in sicurezza fino a max 30 prodotti a sessione per non rallentare la Action)
+                # Otteniamo i prezzi in sicurezza (max 30 richieste web esterne per sessione)
                 usa_api_reale = contatore_richieste < 30
                 
                 prezzo_disc = stimatore_prezzo(cat1, "discount", e_barcode if usa_api_reale else None)
@@ -195,10 +198,9 @@ def esegui_pipeline():
         df_cache = pd.DataFrame(database_mappato)
         df_cache = df_cache.drop_duplicates(subset=["discount", "marca"])
         df_cache.to_csv("prodotti.csv", index=False)
-        print(f"Successo! Pipeline completata. Mappati {len(df_cache)} prodotti.")
+        print(f"Successo! Pipeline completata. Mappati {len(df_cache)} prodotti puliti.")
     else:
-        print("Nessun match trovato.")
+        print("Nessun match valido trovato.")
 
 if __name__ == "__main__":
     esegui_pipeline()
-    
