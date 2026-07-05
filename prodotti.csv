@@ -1,11 +1,8 @@
-stabilimento,categoria,discount,marca,barcode_discount,barcode_marca,nota,bollino
-nan,Dry biscuits,Magretti [Galbusera],Pan di Stelle [Mulino Bianco pan di stelle],8002190001449,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 24%.,🟠 Solo Stessa Fabbrica
-nan,Dry biscuits,Mandorla Salata [Gran Cereale],Pan di Stelle [Mulino Bianco pan di stelle],8076809584746,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 44%.,🟠 Solo Stessa Fabbrica
-nan,Dry biscuits,Mini gallette [AMO ESSERE Bio],Pan di Stelle [Mulino Bianco pan di stelle],8017596112682,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 16%.,🟠 Solo Stessa Fabbrica
-nan,Dry biscuits,Crema di arachidi [Sibamba],Pan di Stelle [Mulino Bianco pan di stelle],8017596107008,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 6%.,🟠 Solo Stessa Fabbrica
-nan,Biscuits,Mandorla Salata [Gran Cereale],Magretti [Galbusera],8076809584746,8002190001449,Analisi ricetta su DB storico. Somiglianza ingredienti: 21%.,🟠 Solo Stessa Fabbrica
-nan,Biscuits,Mini gallette [AMO ESSERE Bio],Magretti [Galbusera],8017596112682,8002190001449,Analisi ricetta su DB storico. Somiglianza ingredienti: 6%.,🟠 Solo Stessa Fabbrica
-nan,Biscuits,Crema di arachidi [Sibamba],Magretti [Galbusera],8017596107008,8002190001449,Analisi ricetta su DB storico. Somiglianza ingredienti: 5%.,🟠 Solo Stessa Fabbrica
-nan,Chocolate biscuits,Mini gallette [AMO ESSERE Bio],Mandorla Salata [Gran Cereale],8017596112682,8076809584746,Analisi ricetta su DB storico. Somiglianza ingredienti: 13%.,🟠 Solo Stessa Fabbrica
-nan,Chocolate biscuits,Crema di arachidi [Sibamba],Mandorla Salata [Gran Cereale],8017596107008,8076809584746,Analisi ricetta su DB storico. Somiglianza ingredienti: 10%.,🟠 Solo Stessa Fabbrica
-nan,Puffed corn cakes,Crema di arachidi [Sibamba],Mini gallette [AMO ESSERE Bio],8017596107008,8017596112682,Analisi ricetta su DB storico. Somiglianza ingredienti: 20%.,🟠 Solo Stessa Fabbrica
+stabilimento,categoria,discount,marca,barcode_discount,barcode_marca,prezzo_discount,prezzo_marca,nota,bollino
+Verificato da Ricetta,Natural mineral waters,"Acqua minerale naturale [Blues, Eurospin]","acqua minerale [Nestlé, Levissima, S.PELLEGRINO]",8017596066961,80000532,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 100%.,🟢 Identico (Analisi Ricette DB)
+Verificato da Ricetta,Carbonated mineral waters,Acqua minerale effervescente naturale [Ferrarelle],Acqua minerale naturale frizzante Lete [Lete],80134091,80412021,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 75%.,🟡 Gemello (Ricetta Simile)
+Verificato da Ricetta,Natural mineral waters,"Acqua naturale naturale [Eurospin, Ginevra]",Acqua minerale naturale [Uliveto],8017596057105,8008490000021,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 100%.,🟢 Identico (Analisi Ricette DB)
+Verificato da Ricetta,Natural mineral waters,"Acqua naturale naturale [Eurospin, Ginevra]",Rocchetta Naturale [Rocchetta],8017596057105,8009245001010,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 100%.,🟢 Identico (Analisi Ricette DB)
+Verificato da Ricetta,Carbonated mineral waters,Acqua minerale naturale frizzante Lete [Lete],Acqua minerale effervescente naturale [Ferrarelle],80412021,80134091,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 75%.,🟡 Gemello (Ricetta Simile)
+Verificato da Ricetta,Natural mineral waters,Rocchetta Naturale [Rocchetta],Acqua minerale naturale [Uliveto],8009245001010,8008490000021,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 100%.,🟢 Identico (Analisi Ricette DB)
+Verificato da Ricetta,Natural mineral waters,Acqua minerale naturale [Uliveto],Rocchetta Naturale [Rocchetta],8008490000021,8009245001010,N/D,N/D,Analisi di laboratorio digitale. Corrispondenza ingredienti: 100%.,🟢 Identico (Analisi Ricette DB)
