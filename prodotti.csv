@@ -1,26 +1,11 @@
-stabilimento,categoria,discount,marca,nota,bollino
-FSC-C115580,Online,Biscotti allo yogurt Dolcesenza,MISURA,Sincronizzato automaticamente via API,🔵 Dati Web
-AT 30960 EG,Online,Kefir,milk,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C149053,Online,Più integrali Ricchi di Fibre Segale,Galbusera,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C014047,Online,Latte parzialmente scremato,Arborea,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C149053,Online,Gran saraceno,Galbusera,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C155329,Online,Fibrextra,Misura,Sincronizzato automaticamente via API,🔵 Dati Web
-GR 02-105 EC,Online,Yogurt Total 0%,FAGE,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C130580,Online,Mini burger vegetale agli spinaci,kioene,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C115580,Online,Crackers integrali,Misura,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C109331,Online,"DolcesenzaFrumento, Avena e Riso",Misura,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C149053,Online,Magretti,Galbusera,Sincronizzato automaticamente via API,🔵 Dati Web
-AT 30960 EG,Online,kefir bianco,milk,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C014047,Online,"Alpro Mandeldrink Weiß Ungesüßt, Ungeröstet 1 LT",alpro,Sincronizzato automaticamente via API,🔵 Dati Web
-HR 159 EU,Online,I love kefir bianco naturale,Nestlé,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C133690,Online,FIOCCHI D'AVENA,Crownfield,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C175170,Online,Buonicosì,Galbusera,Sincronizzato automaticamente via API,🔵 Dati Web
-AT 30960 EG,Online,Kefir bio,milk,Sincronizzato automaticamente via API,🔵 Dati Web
-IT 03-1 CE,Online,Ricotta Santa Lucia,Galbani Santa Lucia,Sincronizzato automaticamente via API,🔵 Dati Web
-IT 03-170 CE,Online,Latte PARZIALMENTE SCREMATO,Granarolo,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C115580,Online,Privolat - Biscotti Miele Millefiori,MISURA,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C149053,Online,Turco,Galbusera,Sincronizzato automaticamente via API,🔵 Dati Web
-IT 08-1 CE,Online,Zymil - Latte senza Lattosio,Zymil,Sincronizzato automaticamente via API,🔵 Dati Web
-RSPO-1106186,Online,Extra chocolate y avellanas,Kellogg's,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C012484,Online,Fondentenero Cioccolato Extra Amaro 72%,Novi,Sincronizzato automaticamente via API,🔵 Dati Web
-FSC-C175170,Online,Buoni cosi Galbusera,Galbusera,Sincronizzato automaticamente via API,🔵 Dati Web
+stabilimento,categoria,discount,marca,barcode_discount,barcode_marca,nota,bollino
+nan,Dry biscuits,Magretti [Galbusera],Pan di Stelle [Mulino Bianco pan di stelle],8002190001449,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 24%.,🟠 Solo Stessa Fabbrica
+nan,Dry biscuits,Mandorla Salata [Gran Cereale],Pan di Stelle [Mulino Bianco pan di stelle],8076809584746,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 44%.,🟠 Solo Stessa Fabbrica
+nan,Dry biscuits,Mini gallette [AMO ESSERE Bio],Pan di Stelle [Mulino Bianco pan di stelle],8017596112682,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 16%.,🟠 Solo Stessa Fabbrica
+nan,Dry biscuits,Crema di arachidi [Sibamba],Pan di Stelle [Mulino Bianco pan di stelle],8017596107008,8076809580755,Analisi ricetta su DB storico. Somiglianza ingredienti: 6%.,🟠 Solo Stessa Fabbrica
+nan,Biscuits,Mandorla Salata [Gran Cereale],Magretti [Galbusera],8076809584746,8002190001449,Analisi ricetta su DB storico. Somiglianza ingredienti: 21%.,🟠 Solo Stessa Fabbrica
+nan,Biscuits,Mini gallette [AMO ESSERE Bio],Magretti [Galbusera],8017596112682,8002190001449,Analisi ricetta su DB storico. Somiglianza ingredienti: 6%.,🟠 Solo Stessa Fabbrica
+nan,Biscuits,Crema di arachidi [Sibamba],Magretti [Galbusera],8017596107008,8002190001449,Analisi ricetta su DB storico. Somiglianza ingredienti: 5%.,🟠 Solo Stessa Fabbrica
+nan,Chocolate biscuits,Mini gallette [AMO ESSERE Bio],Mandorla Salata [Gran Cereale],8017596112682,8076809584746,Analisi ricetta su DB storico. Somiglianza ingredienti: 13%.,🟠 Solo Stessa Fabbrica
+nan,Chocolate biscuits,Crema di arachidi [Sibamba],Mandorla Salata [Gran Cereale],8017596107008,8076809584746,Analisi ricetta su DB storico. Somiglianza ingredienti: 10%.,🟠 Solo Stessa Fabbrica
+nan,Puffed corn cakes,Crema di arachidi [Sibamba],Mini gallette [AMO ESSERE Bio],8017596107008,8017596112682,Analisi ricetta su DB storico. Somiglianza ingredienti: 20%.,🟠 Solo Stessa Fabbrica
