@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import re
+import os
 import time
 
 def pulisci_bollino(testo):
@@ -9,31 +10,127 @@ def pulisci_bollino(testo):
     return pulito.replace("EMB", "")
 
 def calcola_somiglianza_ingredienti(ing1, ing2):
-    if not ing1 or not ing2: return 50 # Valore di fallback se mancano i testi
+    if not ing1 or not ing2: return 0
     set1 = set(re.findall(r'\w+', str(ing1).lower()))
     set2 = set(re.findall(r'\w+', str(ing2).lower()))
-    if not set1 or not set2: return 50
+    if not set1 or not set2: return 0
     intersezione = set1.intersection(set2)
     unione = set1.union(set2)
     return int((len(intersezione) / len(unione)) * 100)
 
-def scarica_categoria(parola_chiave):
-    print(f"Scarico dati per: {parola_chiave}...")
+def scarica_tutti_prodotti_massa():
+    print("Inizio scaricamento di massa da Open Food Facts...")
     url = "https://it.openfoodfacts.org/api/v2/search"
+    
+    # Scarichiamo un blocco massivo di prodotti italiani (fino a 1000 per botta)
     params = {
-        "search_terms": parola_chiave,
         "action": "process",
+        "tagtype_0": "countries",
+        "tag_contains_0": "contains",
+        "tag_0": "italia",
         "fields": "product_name,brands,categories,emb_codes,ingredients_text_it,code",
-        "page_size": 100,
+        "page_size": 1000, 
         "cc": "it", "lc": "it"
     }
-    headers = {"User-Agent": "InciarmoSpesaBot/3.0"}
+    
+    headers = {"User-Agent": "InciarmoSpesaBot/4.0"}
     try:
-        res = requests.get(url, params=params, headers=headers, timeout=15)
+        res = requests.get(url, params=params, headers=headers, timeout=25)
         if res.status_code == 200:
             return res.json().get("products", [])
     except Exception as e:
-        print(f"Errore {parola_chiave}: {e}")
+        print(f"Errore download di massa: {e}")
+    return []
+
+def esegui_pipeline():
+    # 1. SCARICA I DATI NUOVI
+    nuovi_prodotti = scarica_tutti_prodotti_massa()
+    if not nuovi_prodotti:
+        print("Nessun dato scaricato. Esco per sicurezza.")
+        return
+        
+    df_nuovi = pd.DataFrame(nuovi_prodotti)
+    
+    # 2. ACCUMULO NEL DATABASE GREZZO (La tua idea di DB ampio)
+    file_raw = "prodotti_raw.csv"
+    if os.path.exists(file_raw):
+        df_vecchi = pd.read_csv(file_raw)
+        # Uniamo vecchio e nuovo eliminando i duplicati basandoci sul codice a barre unico
+        df_totale_raw = pd.concat([df_vecchi, df_nuovi]).drop_duplicates(subset=["code"])
+    else:
+        df_totale_raw = df_nuovi
+        
+    df_totale_raw.to_csv(file_raw, index=False)
+    print(f"Database grezzo aggiornato. Totale prodotti in archivio: {len(df_totale_raw)}")
+    
+    # 3. ELABORAZIONE CACHE DEGLI SGAMI (Trova gli inciarmi nel DB ampio)
+    print("Generazione della cache degli sgami...")
+    database_mappato = []
+    marchi_discount = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam"]
+    
+    # Trasformiamo in lista di dizionari per velocizzare i cicli Python
+    lista_prodotti = df_totale_raw.to_dict(orient="records")
+    
+    for i, p1 in enumerate(lista_prodotti):
+        emb1 = str(p1.get("emb_codes", "")).strip()
+        emb1_pulito = pulisci_bollino(emb1)
+        name1 = str(p1.get("product_name", "")).strip()
+        brand1 = str(p1.get("brands", "Generico")).strip()
+        ing1 = p1.get("ingredients_text_it", "")
+        code1 = p1.get("code", "")
+        
+        if not emb1_pulito or brand1 == "Generico" or name1 == "" or name1 == "nan": continue
+        
+        for p2 in lista_prodotti[i+1:]:
+            brand2 = str(p2.get("brands", "Generico")).strip()
+            emb2_pulito = pulisci_bollino(p2.get("emb_codes", ""))
+            name2 = str(p2.get("product_name", "")).strip()
+            ing2 = p2.get("ingredients_text_it", "")
+            code2 = p2.get("code", "")
+            
+            if emb1_pulito == emb2_pulito and brand1.lower() != brand2.lower() and name2 and name2 != "nan" and brand2 != "Generico":
+                # Capisci chi è il discount e chi la marca leader
+                b1_disc = any(d in brand1.lower() for d in marchi_discount)
+                b2_disc = any(d in brand2.lower() for d in marchi_discount)
+                
+                if b1_disc and not b2_disc:
+                    m_discount, n_discount, e_barcode = brand1, name1, code1
+                    m_marca, n_marca, m_barcode = brand2, name2, code2
+                else:
+                    m_discount, n_discount, e_barcode = brand2, name2, code2
+                    m_marca, n_marca, m_barcode = brand1, name1, code1
+                
+                score = calcola_somiglianza_ingredienti(ing1, ing2)
+                
+                if score > 75:
+                    livello = "🟢 Identico (Ricetta Match)"
+                elif score > 45:
+                    livello = "🟡 Gemello (Ricetta Simile)"
+                else:
+                    livello = "🟠 Solo Stessa Fabbrica"
+                
+                database_mappato.append({
+                    "stabilimento": emb1.split(",")[0].replace("EMB", "").strip(),
+                    "categoria": str(p1.get("categories", "Altro")).split(",")[0],
+                    "discount": f"{n_discount} [{m_discount}]",
+                    "marca": f"{n_marca} [{m_marca}]",
+                    "barcode_discount": str(e_barcode),
+                    "barcode_marca": str(m_barcode),
+                    "nota": f"Analisi ricetta su DB storico. Somiglianza ingredienti: {score}%.",
+                    "bollino": livello
+                })
+                
+    if database_mappato:
+        df_cache = pd.DataFrame(database_mappato)
+        df_cache = df_cache.drop_duplicates(subset=["discount", "marca"])
+        # Salviamo la cache ufficiale che leggerà Streamlit
+        df_cache.to_csv("prodotti.csv", index=False)
+        print(f"Cache aggiornata! {len(df_cache)} sgami pronti per Streamlit.")
+    else:
+        print("Nessun match ricavato in questa sessione.")
+
+if __name__ == "__main__":
+    esegui_pipeline()
     return []
 
 def esegui_pompaggio_db():
