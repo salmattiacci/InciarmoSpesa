@@ -31,9 +31,76 @@ def scarica_e_incrocia():
         "tag_0": "italia",
         "fields": "product_name,brands,categories,emb_codes,ingredients_text_it",
         "page_size": 250, # Alziamo il tiro per avere molti più dati
-        "cc": "it", "lc": "it"
+        "cc": "it", 
+        "lc": "it"
     }
     
+    headers = {"User-Agent": "InciarmoSpesaBot/2.0"}
+    
+    try:
+        res = requests.get(url, params=params, headers=headers, timeout=20)
+        if res.status_code != 200: 
+            print(f"Errore server OFF: {res.status_code}")
+            return
+        
+        products = res.json().get("products", [])
+        print(f"Scaricati {len(products)} prodotti. Inizio analisi incrociata...")
+        
+        database_mappato = []
+        
+        for i, p1 in enumerate(products):
+            emb1 = p1.get("emb_codes", "").strip()
+            emb1_pulito = pulisci_bollino(emb1)
+            name1 = p1.get("product_name", "").strip()
+            brand1 = p1.get("brands", "Generico").strip()
+            ing1 = p1.get("ingredients_text_it", "")
+            
+            if not emb1_pulito or not name1: continue
+            
+            # Cerchiamo un altro prodotto nel mucchio con lo STESSO stabilimento pulito
+            for p2 in products[i+1:]:
+                emb2_pulito = pulisci_bollino(p2.get("emb_codes", ""))
+                name2 = p2.get("product_name", "").strip()
+                brand2 = p2.get("brands", "Generico").strip()
+                ing2 = p2.get("ingredients_text_it", "")
+                
+                # Se lo stabilimento è lo stesso ma le marche sono diverse -> Inciarmo!
+                if emb1_pulito == emb2_pulito and brand1.lower() != brand2.lower() and name2:
+                    
+                    # Valutiamo il livello in base agli ingredienti
+                    score = calcola_somiglianza_ingredients_text(ing1, ing2) if 'calcola_somiglianza_ingredients_text' in globals() else calcola_somiglianza_ingredienti(ing1, ing2)
+                    
+                    if score > 75:
+                        livello = "🟢 Identico (Ricetta Match)"
+                    elif score > 45:
+                        livello = "🟡 Gemello (Ricetta Simile)"
+                    else:
+                        livello = "🟠 Solo Stessa Fabbrica"
+                        
+                    database_mappato.append({
+                        "stabilimento": emb1.split(",")[0],
+                        "categoria": p1.get("categories", "Altro").split(",")[0],
+                        "discount": f"{name1} ({brand1})",
+                        "marca": f"{name2} ({brand2})",
+                        "nota": f"Somiglianza ricetta: {score}%. Analizzato automaticamente.",
+                        "bollino": livello
+                    })
+                    
+        # Se abbiamo trovato dei match, salviamo il CSV
+        if database_mappato:
+            df = pd.DataFrame(database_mappato)
+            # Elimina i duplicati speculari
+            df = df.drop_duplicates(subset=["discount", "marca"])
+            df.to_csv("prodotti.csv", index=False)
+            print(f"Database generato! Trovati {len(df)} incroci reali di fabbrica.")
+        else:
+            print("Nessun incrocio trovato in questo blocco di dati.")
+            
+    except Exception as e:
+        print(f"Errore durante l'esecuzione del blocco try: {e}")
+
+if __name__ == "__main__":
+    scarica_e_incrocia()
     headers = {"User-Agent": "InciarmoSpesaBot/2.0"}
     
     try:
