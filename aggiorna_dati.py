@@ -36,16 +36,10 @@ def calcola_somiglianza_ingredienti(ing1, ing2):
     return int((len(intersezione) / len(unione)) * 100)
 
 def cerca_prezzo_reale_api_sicura(barcode):
-    """
-    Interroga l'API di OFF per tentare il recupero del prezzo reale registrato.
-    Usa un sistema leggero e sicuro con pause umane.
-    """
     url = f"https://it.openfoodfacts.org/api/v2/product/{barcode}"
     headers = {"User-Agent": "InciarmoSpesaPrezziBot/5.0 (Privacy-Safe System)"}
-    
     try:
-        # Pausa di sicurezza preventiva per simulare comportamento umano
-        time.sleep(random.uniform(1.5, 3.0))
+        time.sleep(random.uniform(1.0, 2.0))
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             dati = res.json()
@@ -58,10 +52,6 @@ def cerca_prezzo_reale_api_sicura(barcode):
     return None
 
 def stimatore_prezzo(categoria, tipo_prodotto, barcode=None):
-    """
-    Tenta prima il recupero del prezzo reale dal barcode. 
-    Se fallisce o è assente, applica il listino statistico di mercato.
-    """
     if barcode:
         prezzo_reale = cerca_prezzo_reale_api_sicura(barcode)
         if prezzo_reale:
@@ -74,32 +64,49 @@ def stimatore_prezzo(categoria, tipo_prodotto, barcode=None):
     return 2.49 if tipo_prodotto == "marca" else 1.49
 
 def scarica_tutti_prodotti_massa():
-    print("Inizio scaricamento di massa da Open Food Facts...")
+    print("Inizio scaricamento progressivo da Open Food Facts...")
     url = "https://it.openfoodfacts.org/api/v2/search"
-    params = {
-        "action": "process",
-        "tagtype_0": "countries",
-        "tag_contains_0": "contains",
-        "tag_0": "italia",
-        "fields": "product_name,brands,categories,emb_codes,ingredients_text_it,code",
-        "page_size": 1000, 
-        "cc": "it", "lc": "it"
-    }
-    headers = {"User-Agent": "InciarmoSpesaBot/5.0"}
-    try:
-        res = requests.get(url, params=params, headers=headers, timeout=25)
-        if res.status_code == 200:
-            return res.json().get("products", [])
-        else:
-            return []
-    except Exception as e:
-        print(f"Errore: {e}")
-        return []
+    tutti_i_prodotti = []
+    
+    # Scarichiamo 3 pagine da 250 prodotti l'una invece di un blocco unico da 1000
+    for pagina in range(1, 4):
+        print(f"Scaricamento pagina {pagina}...")
+        params = {
+            "action": "process",
+            "tagtype_0": "countries",
+            "tag_contains_0": "contains",
+            "tag_0": "italia",
+            "fields": "product_name,brands,categories,emb_codes,ingredients_text_it,code",
+            "page_size": 250, 
+            "page": pagina,
+            "cc": "it", "lc": "it"
+        }
+        headers = {"User-Agent": "InciarmoSpesaBot/5.0"}
+        
+        # Tentativi di riprovo (Retry loop)
+        for tentativo in range(3):
+            try:
+                res = requests.get(url, params=params, headers=headers, timeout=15)
+                if res.status_code == 200:
+                    prodotti_pagina = res.json().get("products", [])
+                    tutti_i_prodotti.extend(prodotti_pagina)
+                    print(f"Scaricati {len(prodotti_pagina)} prodotti dalla pagina {pagina}.")
+                    break
+                else:
+                    print(f"Server ha risposto con status {res.status_code}, riprovo...")
+            except Exception as e:
+                print(f"Tentativo {tentativo + 1} fallito per timeout o errore: {e}")
+            time.sleep(2) # Pausa prima del prossimo tentativo
+            
+        time.sleep(1) # Pausa tra le pagine per non sovraccaricare il server
+        
+    print(f"Scaricamento completato. Totale prodotti grezzi raccolti: {len(tutti_i_prodotti)}")
+    return tutti_i_prodotti
 
 def esegui_pipeline():
     nuovi_prodotti = scarica_tutti_prodotti_massa()
     if not nuovi_prodotti:
-        print("Nessun dato scaricato.")
+        print("Nessun dato scaricato dopo tutti i tentativi. Verificare connessione o stato API di OFF.")
         return
         
     df_nuovi = pd.DataFrame(nuovi_prodotti)
@@ -144,17 +151,14 @@ def esegui_pipeline():
             match_valido = False
             tipo_match = ""
             
-            # BLOCCO DI SICUREZZA: Identifica se è acqua minerale o bevanda generica mono-ingrediente
             is_acqua_o_singolo = "water" in cat1.lower() or "acque" in cat1.lower() or "beverages" in cat1.lower()
             
-            # REQUISITO 1: Stabilimenti identici compilati (Valido sempre, anche per l'acqua)
             if emb1_pulito and emb2_pulito and emb1_pulito != "NAN" and emb2_pulito != "NAN" and emb1_pulito == emb2_pulito:
                 match_valido = True
                 if score > 75: tipo_match = "🟢 Identico (Stessa Fabbrica + Ricetta)"
                 elif score > 45: tipo_match = "🟡 Gemello (Stessa Fabbrica + Ricetta Simile)"
                 else: tipo_match = "🟠 Solo Stessa Fabbrica"
             
-            # REQUISITO 2: Stessa categoria e ricetta simile MA escludendo tassativamente le acque
             elif cat1 == cat2 and cat1 != "Altro" and score >= 70 and not is_acqua_o_singolo:
                 match_valido = True
                 tipo_match = "🟢 Identico (Analisi Ricette DB)" if score > 85 else "🟡 Gemello (Ricetta Simile)"
@@ -170,7 +174,6 @@ def esegui_pipeline():
                     m_discount, n_discount, e_barcode = brand2, name2, code2
                     m_marca, n_marca, m_barcode = brand1, name1, code1
                 
-                # Otteniamo i prezzi in sicurezza (max 30 richieste web esterne per sessione)
                 usa_api_reale = contatore_richieste < 30
                 
                 prezzo_disc = stimatore_prezzo(cat1, "discount", e_barcode if usa_api_reale else None)
@@ -198,9 +201,10 @@ def esegui_pipeline():
         df_cache = pd.DataFrame(database_mappato)
         df_cache = df_cache.drop_duplicates(subset=["discount", "marca"])
         df_cache.to_csv("prodotti.csv", index=False)
-        print(f"Successo! Pipeline completata. Mappati {len(df_cache)} prodotti puliti.")
+        print(f"Successo! Mappati {len(df_cache)} prodotti nel DB finale.")
     else:
-        print("Nessun match valido trovato.")
+        print("Nessun match valido trovato in questa sessione.")
 
 if __name__ == "__main__":
     esegui_pipeline()
+                    
