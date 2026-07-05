@@ -3,11 +3,11 @@ import pandas as pd
 
 st.set_page_config(page_title="L'Inciarmo della Spesa v3", page_icon="🛒", layout="centered")
 st.title("L'Inciarmo della Spesa 🛒")
-st.caption("Confronto Specifico: Marca vs Discount + Scanner Fotografico")
+st.caption("Database potenziato: Grandi Marche vs Discount + Ricerca EAN/Barcode")
 
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/salmattiacci/InciarmoSpesa/main/prodotti.csv"
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=10)
 def carica_dati(url):
     try:
         return pd.read_csv(url)
@@ -16,68 +16,57 @@ def carica_dati(url):
 
 df_prodotti = carica_dati(GITHUB_RAW_URL)
 
-# --- NUOVA FUNZIONE: SCANNER DA CELLULARE ---
-st.subheader("📸 Scansiona o Digita")
-usa_foto = st.toggle("Attiva Fotocamera per Codice a Barre / Bollo")
+query = st.text_input("Scannerizza il codice a barre o scrivi il prodotto (es. Pan di stelle, Mulino Bianco, Eurospin):", placeholder="Incolla l'EAN o scrivi il nome...")
 
-query = ""
-if usa_foto:
-    foto_catturata = st.camera_input("Inquadra il codice o lo stabilimento sul prodotto")
-    if foto_catturata:
-        st.info("Foto acquisita! Nota: Per estrarre il testo dalle foto in automatico servirà un modulo OCR, per ora inserisci il testo o usa la ricerca manuale qui sotto.")
-
-# Campo di ricerca manuale (funziona sempre come fallback principale)
-query_manuale = st.text_input("Inserisci Codice a Barre, Parola Chiave o Stabilimento CE:", placeholder="Es. 800123456789, biscotti, IT 03 3 CE...")
-
-# Scegliamo quale query usare
-if query_manuale:
-    query = query_manuale
-
-# Se non c'è testo da cercare, ci fermiamo qui
 if not query:
-    st.info("Usa la tastiera o la fotocamera per scovare i prodotti gemelli!")
+    st.info("💡 Inserisci il nome di un prodotto famoso o il suo codice a barre per scoprire l'alternativa economica.")
     st.stop()
 
 if df_prodotti.empty:
-    st.error("Il database è in fase di caricamento. Attendi la sincronizzazione di GitHub.")
+    st.error("Il database si sta aggiornando su GitHub. Attendi un minuto e ricarica.")
     st.stop()
 
-# --- RICERCA E CORRISPONDENZA SPECIFICA ---
-mask = df_prodotti.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
+# Ricerca intelligente: controlla i testi, ma anche i codici a barre di marca e discount!
+query_str = str(query).strip()
+mask = (
+    df_prodotti['discount'].astype(str).str.contains(query_str, case=False) |
+    df_prodotti['marca'].astype(str).str.contains(query_str, case=False) |
+    df_prodotti['stabilimento'].astype(str).str.contains(query_str, case=False) |
+    df_prodotti['barcode_discount'].astype(str).str.contains(query_str, case=False) |
+    df_prodotti['barcode_marca'].astype(str).str.contains(query_str, case=False)
+)
+
 df_filtrato = df_prodotti[mask]
 
 if df_filtrato.empty:
-    st.warning(f"Nessun match trovato per '{query}'. L'algoritmo sta raccogliendo nuovi dati.")
+    st.warning(f"Nessun inciarmo registrato per '{query}'. Stiamo espandendo i controlli industriali.")
     st.stop()
 
-st.subheader(f"🔍 Risultati Specifici Trovati ({len(df_filtrato)})")
+st.subheader(f"🎯 Sgami Rilevati per la tua ricerca ({len(df_filtrato)})")
 
 for _, row in df_filtrato.iterrows():
     bollino = str(row.get('bollino', ''))
     
-    # Colore visivo del livello di somiglianza degli ingredienti
     if "🟢" in bollino:
-        colore_box = "success"
-        badge = "🟢 RICETTA IDENTICA"
+        badge = "🟢 EQUIVALENTE PERFETTO (STESSA RICETTA)"
     elif "🟡" in bollino:
-        colore_box = "warning"
         badge = "🟡 RICETTA SIMILE (GEMELLO)"
     else:
-        colore_box = "normal"
-        badge = "🟠 STESSA FABBRICA, RICETTA DIVERSA"
+        badge = "🟠 SOLO STESSO STABILIMENTO"
         
     with st.container(border=True):
         st.markdown(f"### {badge}")
         
-        # Mappatura Specifica: Chi produce per chi
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("🏭 **Fabbricato da (Grande Marca):**")
-            st.code(row.get('marca', 'N/D'))
+            st.markdown("💸 **L'alternativa economica al Discount:**")
+            st.warning(f"✨ {row.get('discount')}")
+            st.caption(f"Code: {row.get('barcode_discount', 'Non mappato')}")
         with col2:
-            st.markdown("🏪 **Venduto come (Alternativa Economica):**")
-            st.code(row.get('discount', 'N/D'))
+            st.markdown("👑 **Il Prodotto Originale di Marca:**")
+            st.info(f"✨ {row.get('marca')}")
+            st.caption(f"Code: {row.get('barcode_marca', 'Non mappato')}")
             
         st.divider()
-        st.caption(f"📍 **Stabilimento d'Origine:** `{row.get('stabilimento', 'N/D')}`")
-        st.write(f"ℹ️ **Analisi Fabbrica:** {row.get('nota', '')}")
+        st.caption(f"🏭 **Fabbricati entrambi a:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
+        st.write(f"📋 **Esito dell'algoritmo:** {row.get('nota', '')}")
