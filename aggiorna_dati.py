@@ -2,7 +2,6 @@ import requests
 import pandas as pd
 import re
 import os
-import time
 
 def pulisci_bollino(testo):
     if not testo or pd.isna(testo): return ""
@@ -27,7 +26,6 @@ def scarica_tutti_prodotti_massa():
         "tagtype_0": "countries",
         "tag_contains_0": "contains",
         "tag_0": "italia",
-        # Aggiungiamo 'price' e 'price_value' nei campi richiesti
         "fields": "product_name,brands,categories,emb_codes,ingredients_text_it,code,price,price_value",
         "page_size": 1000, 
         "cc": "it", "lc": "it"
@@ -63,7 +61,7 @@ def esegui_pipeline():
     
     print("Generazione della cache degli sgami reali...")
     database_mappato = []
-    marchi_discount = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "galbusera"]
+    marchi_discount = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "galbusera", "amo essere bio", "tre mulini", "maribel", "sibamba", "blues"]
     
     lista_prodotti = df_totale_raw.to_dict(orient="records")
     
@@ -72,26 +70,42 @@ def esegui_pipeline():
         emb1_pulito = pulisci_bollino(emb1)
         name1 = str(p1.get("product_name", "")).strip()
         brand1 = str(p1.get("brands", "Generico")).strip()
+        cat1 = str(p1.get("categories", "Altro")).split(",")[0].strip()
         ing1 = p1.get("ingredients_text_it", "")
         code1 = p1.get("code", "")
-        # Estrazione prezzo (usa price_value o price se stringa)
         p1_prezzo = p1.get("price_value", p1.get("price", "N/D"))
         
-        # CRITICO: Se manca lo stabilimento reale, saltiamo! Evita i falsi positivi 'nan'
-        if not emb1_pulito or emb1_pulito == "NAN" or brand1 == "Generico" or name1 in ["", "nan"]: continue
+        if brand1 == "Generico" or name1 in ["", "nan"]: continue
         
         for p2 in lista_prodotti[i+1:]:
             brand2 = str(p2.get("brands", "Generico")).strip()
-            emb2_pulito = pulisci_bollino(p2.get("emb_codes", ""))
             name2 = str(p2.get("product_name", "")).strip()
+            cat2 = str(p2.get("categories", "Altro")).split(",")[0].strip()
+            emb2_pulito = pulisci_bollino(p2.get("emb_codes", ""))
             ing2 = p2.get("ingredients_text_it", "")
             code2 = p2.get("code", "")
             p2_prezzo = p2.get("price_value", p2.get("price", "N/D"))
             
-            if not emb2_pulito or emb2_pulito == "NAN": continue
+            if brand2 == "Generico" or name2 in ["", "nan"] or brand1.lower() == brand2.lower(): continue
             
-            # Il match avviene SOLO se lo stabilimento è identico al 100%
-            if emb1_pulito == emb2_pulito and brand1.lower() != brand2.lower() and name2 not in ["", "nan"] and brand2 != "Generico":
+            # Calcolo somiglianza ricetta
+            score = calcola_somiglianza_ingredienti(ing1, ing2)
+            match_valido = False
+            tipo_match = ""
+            
+            # REGOLA 1: Stabilimenti identici compilati (Match di Fabbrica)
+            if emb1_pulito and emb2_pulito and emb1_pulito != "NAN" and emb2_pulito != "NAN" and emb1_pulito == emb2_pulito:
+                match_valido = True
+                if score > 75: tipo_match = "🟢 Identico (Stessa Fabbrica + Ricetta)"
+                elif score > 45: tipo_match = "🟡 Gemello (Stessa Fabbrica + Ricetta Simile)"
+                else: tipo_match = "🟠 Solo Stessa Fabbrica"
+                
+            # REGOLA 2: Stabilimenti mancanti MA stessa categoria precisa e ricetta quasi identica (>70%)
+            elif cat1 == cat2 and cat1 != "Altro" and score >= 70:
+                match_valido = True
+                tipo_match = "🟢 Identico (Analisi Ricette DB)" if score > 85 else "🟡 Gemello (Ricetta Simile)"
+
+            if match_valido:
                 b1_disc = any(d in brand1.lower() for d in marchi_discount)
                 b2_disc = any(d in brand2.lower() for d in marchi_discount)
                 
@@ -102,35 +116,28 @@ def esegui_pipeline():
                     m_discount, n_discount, e_barcode, prezzo_disc = brand2, name2, code2, p2_prezzo
                     m_marca, n_marca, m_barcode, prezzo_marca = brand1, name1, code1, p1_prezzo
                 
-                score = calcola_somiglianza_ingredienti(ing1, ing2)
-                
-                if score > 75:
-                    livello = "🟢 Identico (Ricetta Match)"
-                elif score > 45:
-                    livello = "🟡 Gemello (Ricetta Simile)"
-                else:
-                    livello = "🟠 Solo Stessa Fabbrica"
+                stabilimento_finale = emb1_pulito if (emb1_pulito and emb1_pulito != "NAN") else "Verificato da Ricetta"
                 
                 database_mappato.append({
-                    "stabilimento": emb1_pulito,
-                    "categoria": str(p1.get("categories", "Altro")).split(",")[0],
+                    "stabilimento": stabilimento_finale,
+                    "categoria": cat1,
                     "discount": f"{n_discount} [{m_discount}]",
                     "marca": f"{n_marca} [{m_marca}]",
                     "barcode_discount": str(e_barcode),
                     "barcode_marca": str(m_barcode),
                     "prezzo_discount": str(prezzo_disc),
                     "prezzo_marca": str(prezzo_marca),
-                    "nota": f"Verificato su stabilimento {emb1_pulito}. Somiglianza ricetta: {score}%.",
-                    "bollino": livello
+                    "nota": f"Analisi di laboratorio digitale. Corrispondenza ingredienti: {score}%.",
+                    "bollino": tipo_match
                 })
                 
     if database_mappato:
         df_cache = pd.DataFrame(database_mappato)
         df_cache = df_cache.drop_duplicates(subset=["discount", "marca"])
         df_cache.to_csv("prodotti.csv", index=False)
-        print(f"Successo! Mappati {len(df_cache)} veri inciarmi industriali con prezzi.")
+        print(f"Successo! Mappati {len(df_cache)} inciarmi reali con la strategia ibrida.")
     else:
-        print("Nessun match valido trovato con codice stabilimento reale.")
+        print("Nessun match trovato nemmeno con il controllo incrociato delle ricette.")
 
 if __name__ == "__main__":
     esegui_pipeline()
