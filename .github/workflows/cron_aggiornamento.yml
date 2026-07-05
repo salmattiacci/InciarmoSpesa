@@ -10,18 +10,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      # Sblocca i permessi di scrittura per fare il push dei dati
       contents: write
       
     steps:
+    # Aggiornato da v3 a v4 (Supporta Node 24 nativo)
     - name: Accedi alla Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
-        # Usa il token nativo con i nuovi permessi di scrittura
         token: ${{ secrets.GITHUB_TOKEN }}
 
+    # Aggiornato da v4 a v5 (Supporta Node 24 nativo)
     - name: Configura Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -29,7 +29,7 @@ jobs:
       run: |
         pip install requests pandas
 
-    - name: Esegui lo Script Per il Fetching dei Dati
+    - name: Esegui lo Script di Sfeccia
       run: python aggiorna_dati.py
 
     - name: Salva le modifiche su GitHub
@@ -37,6 +37,5 @@ jobs:
         git config --global user.name 'InciarmoBot'
         git config --global user.email 'bot@inciarmo.local'
         git add prodotti.csv
-        # Il commit evita di bloccarsi se i dati sono identici a ieri
         git commit -m "Aggiornamento automatico prodotti da API" || exit 0
         git push
