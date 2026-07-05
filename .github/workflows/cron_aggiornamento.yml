@@ -29,7 +29,7 @@ jobs:
       run: |
         pip install requests pandas
 
-    - name: Esegui lo Script di Sfeccia
+    - name: Esegui lo Script di Fetch Prodotti
       run: python aggiorna_dati.py
 
     - name: Salva le modifiche su GitHub
