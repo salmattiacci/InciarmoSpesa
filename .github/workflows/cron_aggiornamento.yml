@@ -39,3 +39,11 @@ jobs:
         git add prodotti.csv
         git commit -m "Aggiornamento automatico prodotti da API" || exit 0
         git push
+    - name: Salva le modifiche su GitHub
+      run: |
+        git config --global user.name 'InciarmoBot'
+        git config --global user.email 'bot@inciarmo.local'
+        git add prodotti.csv prodotti_raw.csv
+        git commit -m "Aggiornamento database storico e cache sgami" || exit 0
+        git push
+        
