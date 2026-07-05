@@ -30,11 +30,34 @@ if query:
             for _, row in df_filtrato.iterrows():
                 # Colora il box in base al livello di inciarmo degli ingredienti
                 bollino = row.get('bollino', '')
-                if "🟢" in bollino:
+                if "🟢" in str(bollino):
                     border_color = "🟢"
-                elif "🟡" in bollino:
+                elif "🟡" in str(bollino):
                     border_color = "🟡"
                 else:
+                    border_color = "🟠"
+                    
+                with st.container(border=True):
+                    st.markdown(f"### {border_color} {row.get('bollino', 'Analizzato')}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.error(f"**Prodotto A:**")
+                        st.write(row.get('discount', 'N/D'))
+                    with col2:
+                        st.success(f"**Prodotto B:**")
+                        st.write(row.get('marca', 'N/D'))
+                        
+                    st.divider()
+                    st.caption(f"🏭 **Bollo CE di provenienza:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
+                    st.info(f"📋 **Esito Analisi:** {row.get('nota', '')}")
+        else:
+            st.warning("Nessun incrocio trovato con questa parola chiave. L'algoritmo sta espandendo il database...")
+    else:
+        st.error("Il database è attualmente vuoto o non raggiungibile su GitHub. Attendi la sincronizzazione.")
+else:
+    st.info("Digita qualcosa qui sopra per scovare i prodotti gemelli!")
+else:
                     border_color = "🟠"
                     
                 with st.container(border=True):
