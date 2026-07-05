@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="L'Inciarmo della Spesa v2", page_icon="🛒", layout="centered")
+st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 st.title("L'Inciarmo della Spesa 🛒")
 st.caption("Algoritmo di match per Stabilimento + Analisi Molecolare degli Ingredienti")
 
@@ -16,7 +16,7 @@ def carica_dati(url):
 
 df_prodotti = carica_dati(GITHUB_RAW_URL)
 
-query = st.text_input("Cerca un prodotto, una marca o un codice stabilimento...", placeholder="Es. biscotti, Coop, Conad, IT...")
+query = st.text_input("Cerca un prodotto, una marca o un codice stabilimento...", placeholder="Es. biscotti, Coop, Conad...")
 
 # Se l'utente non ha cercato nulla, mostriamo l'info e fermiamo l'esecuzione dello script
 if not query:
