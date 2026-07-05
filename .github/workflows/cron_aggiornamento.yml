@@ -1,0 +1,34 @@
+name: Sincronizzazione Automatica Prodotti
+
+on:
+  schedule:
+    # Gira automaticamente ogni giorno alle 4 del mattino
+    - cron: '0 4 * * *'
+  workflow_dispatch: # Ti permette di avviarlo anche a mano con un click su GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Accedi alla Repository
+      uses: actions/checkout@v3
+
+    - name: Configura Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Installa Librerie
+      run: |
+        pip install requests pandas
+
+    - name: Esegui lo Script di Fetch Data
+      run: python aggiorna_dati.py
+
+    - name: Salva le modifiche su GitHub
+      run: |
+        git config --global user.name 'InciarmoBot'
+        git config --global user.email 'bot@inciarmo.local'
+        git add prodotti.csv
+        git commit -m "Aggiornamento automatico prodotti da API" || exit 0
+        git push
