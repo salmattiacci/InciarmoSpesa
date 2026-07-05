@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="L'Inciarmo della Spesa v3", page_icon="🛒", layout="centered")
+st.set_page_config(page_title="L'Inciarmo della Spesa v4", page_icon="🛒", layout="centered")
 st.title("L'Inciarmo della Spesa 🛒")
-st.caption("Database potenziato: Grandi Marche vs Discount + Ricerca EAN/Barcode")
+st.caption("Veri Inciarmi Industriali + Confronto Prezzi & Risparmio")
 
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/salmattiacci/InciarmoSpesa/main/prodotti.csv"
 
@@ -16,27 +16,25 @@ def carica_dati(url):
 
 df_prodotti = carica_dati(GITHUB_RAW_URL)
 
-query = st.text_input("Scannerizza il codice a barre o scrivi il prodotto (es. Pan di stelle, Mulino Bianco, Eurospin):", placeholder="Incolla l'EAN o scrivi il nome...")
+query = st.text_input("Scannerizza il codice a barre o scrivi il prodotto:", placeholder="Es. Pan di Stelle, 8076809580755...")
 
 if not query:
-    st.info("💡 Inserisci il nome di un prodotto famoso o il suo codice a barre per scoprire l'alternativa economica.")
+    st.info("💡 Inserisci il nome del brand o il codice a barre per calcolare lo sgamo ed il risparmio.")
     st.stop()
 
 if df_prodotti.empty:
-    st.error("Il database si sta aggiornando su GitHub. Attendi un minuto e ricarica.")
+    st.error("Database in aggiornamento su GitHub. Riprova tra un istante.")
     st.stop()
 
-# --- FIX DI SICUREZZA ANTI-KEYERROR ---
-for colonna_richiesta in ['discount', 'marca', 'stabilimento', 'barcode_discount', 'barcode_marca', 'bollino', 'categoria', 'nota']:
-    if colonna_richiesta not in df_prodotti.columns:
-        df_prodotti[colonna_richiesta] = ""
+# Configurazione colonne di sicurezza
+for col in ['discount', 'marca', 'stabilimento', 'barcode_discount', 'barcode_marca', 'prezzo_discount', 'prezzo_marca', 'bollino', 'nota']:
+    if col not in df_prodotti.columns:
+        df_prodotti[col] = "N/D"
 
-# Ricerca intelligente su tutte le colonne
 query_str = str(query).strip()
 mask = (
     df_prodotti['discount'].astype(str).str.contains(query_str, case=False) |
     df_prodotti['marca'].astype(str).str.contains(query_str, case=False) |
-    df_prodotti['stabilimento'].astype(str).str.contains(query_str, case=False) |
     df_prodotti['barcode_discount'].astype(str).str.contains(query_str, case=False) |
     df_prodotti['barcode_marca'].astype(str).str.contains(query_str, case=False)
 )
@@ -44,40 +42,48 @@ mask = (
 df_filtrato = df_prodotti[mask]
 
 if df_filtrato.empty:
-    st.warning(f"Nessun inciarmo registrato per '{query}'. Stiamo espandendo i controlli industriali.")
+    st.warning(f"Nessun inciarmo sicuro trovato per '{query}'.")
     st.stop()
 
-st.subheader(f"🎯 Sgami Rilevati per la tua ricerca ({len(df_filtrato)})")
+st.subheader(f"🎯 Sgami Verificati ({len(df_filtrato)})")
 
 for _, row in df_filtrato.iterrows():
     bollino = str(row.get('bollino', ''))
     
     if "🟢" in bollino:
-        badge = "🟢 EQUIVALENTE PERFETTO (STESSA RICETTA)"
+        badge = "🟢 STESSA RICETTA (IDENTICO)"
     elif "🟡" in bollino:
         badge = "🟡 RICETTA SIMILE (GEMELLO)"
     else:
-        badge = "🟠 SOLO STESSO STABILIMENTO"
+        badge = "🟠 SOLO STESSA FABBRICA"
         
     with st.container(border=True):
         st.markdown(f"### {badge}")
         
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("💸 **L'alternativa economica al Discount:**")
+            st.markdown("💸 **Alternativa Discount:**")
             st.warning(f"✨ {row.get('discount')}")
-            b_disc = row.get('barcode_discount', '')
-            txt_disc = str(b_disc) if pd.notna(b_disc) and b_disc != '' else 'Non mappato'
-            st.caption(f"Code: {txt_disc}")
+            p_disc = row.get('prezzo_discount', 'N/D')
+            prezzo_d_testo = f"{p_disc}€" if p_disc != "nan" and p_disc != "N/D" else "Prezzo n.d."
+            st.markdown(f"💰 **Prezzo stimato:** `{prezzo_d_testo}`")
             
         with col2:
-            st.markdown("👑 **Il Prodotto Originale di Marca:**")
+            st.markdown("👑 **Prodotto di Marca:**")
             st.info(f"✨ {row.get('marca')}")
-            b_marca = row.get('barcode_marca', '')
-            txt_marca = str(b_marca) if pd.notna(b_marca) and b_marca != '' else 'Non mappato'
-            st.caption(f"Code: {txt_marca}")
+            p_marca = row.get('prezzo_marca', 'N/D')
+            prezzo_m_testo = f"{p_marca}€" if p_marca != "nan" and p_marca != "N/D" else "Prezzo n.d."
+            st.markdown(f"💰 **Prezzo originale:** `{prezzo_m_testo}`")
+            
+        # Calcolo del risparmio se i prezzi ci sono
+        try:
+            if p_disc != "nan" and p_marca != "nan" and p_disc != "N/D" and p_marca != "N/D":
+                risparmio = float(p_marca) - float(p_disc)
+                if risparmio > 0:
+                    st.success(f"🤑 Sgamo totale: Stai risparmiando **{risparmio:.2f}€** su questa confezione!")
+        except:
+            pass
             
         st.divider()
-        st.caption(f"🏭 **Fabbricati entrambi a:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
-        st.write(f"📋 **Esito dell'algoritmo:** {row.get('nota', '')}")
-        
+        st.caption(f"🏭 **Codice Stabilimento Unico:** `{row.get('stabilimento')}`")
+        st.caption(f"📋 **Nota d'ispezione:** {row.get('nota')}")
