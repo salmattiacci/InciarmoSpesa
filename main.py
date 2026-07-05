@@ -66,8 +66,6 @@ for _, row in df_filtrato.iterrows():
         with col1:
             st.markdown("💸 **L'alternativa economica al Discount:**")
             st.warning(f"✨ {row.get('discount')}")
-            
-            # Gestione pulita del barcode discount senza parentesi folli
             b_disc = row.get('barcode_discount', '')
             txt_disc = str(b_disc) if pd.notna(b_disc) and b_disc != '' else 'Non mappato'
             st.caption(f"Code: {txt_disc}")
@@ -75,8 +73,6 @@ for _, row in df_filtrato.iterrows():
         with col2:
             st.markdown("👑 **Il Prodotto Originale di Marca:**")
             st.info(f"✨ {row.get('marca')}")
-            
-            # Gestione pulita del barcode marca senza parentesi folli
             b_marca = row.get('barcode_marca', '')
             txt_marca = str(b_marca) if pd.notna(b_marca) and b_marca != '' else 'Non mappato'
             st.caption(f"Code: {txt_marca}")
@@ -84,83 +80,4 @@ for _, row in df_filtrato.iterrows():
         st.divider()
         st.caption(f"🏭 **Fabbricati entrambi a:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
         st.write(f"📋 **Esito dell'algoritmo:** {row.get('nota', '')}")
-        mask = (
-    df_prodotti['discount'].astype(str).str.contains(query_str, case=False) |
-    df_prodotti['marca'].astype(str).str.contains(query_str, case=False) |
-    df_prodotti['stabilimento'].astype(str).str.contains(query_str, case=False) |
-    df_prodotti['barcode_discount'].astype(str).str.contains(query_str, case=False) |
-    df_prodotti['barcode_marca'].astype(str).str.contains(query_str, case=False)
-)
-
-df_filtrato = df_prodotti[mask]
-
-if df_filtrato.empty:
-    st.warning(f"Nessun inciarmo registrato per '{query}'. Stiamo espandendo i controlli industriali.")
-    st.stop()
-
-st.subheader(f"🎯 Sgami Rilevati per la tua ricerca ({len(df_filtrato)})")
-
-for _, row in df_filtrato.iterrows():
-    bollino = str(row.get('bollino', ''))
-    
-    if "🟢" in bollino:
-        badge = "🟢 EQUIVALENTE PERFETTO (STESSA RICETTA)"
-    elif "🟡" in bollino:
-        badge = "🟡 RICETTA SIMILE (GEMELLO)"
-    else:
-        badge = "🟠 SOLO STESSO STABILIMENTO"
         
-    with st.container(border=True):
-        st.markdown(f"### {badge}")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("💸 **L'alternativa economica al Discount:**")
-            st.warning(f"✨ {row.get('discount')}")
-            val_b_disc = row.get('barcode_discount', '')
-            st.caption(f"Code: {val_b_disc if pd.notna(val_b_disc) and val_b_disc != '' else 'Non mappato'}")
-        with col2:
-            st.markdown("👑 **Il Prodotto Originale di Marca:**")
-            st.info(f"✨ {row.get('marca')}")
-            val_b_marca = row.get('barcode_marca', '')
-            st.caption(f"Code: {val_b_marca if pd.notna(val_b_marca) and val_b_marca != '' else 'Non mappato'}")
-            
-        st.divider()
-        st.caption(f"🏭 **Fabbricati entrambi a:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
-        st.write(f"📋 **Esito dell'algoritmo:** {row.get('nota', '')}")
-)
-
-df_filtrato = df_prodotti[mask]
-
-if df_filtrato.empty:
-    st.warning(f"Nessun inciarmo registrato per '{query}'. Stiamo espandendo i controlli industriali.")
-    st.stop()
-
-st.subheader(f"🎯 Sgami Rilevati per la tua ricerca ({len(df_filtrato)})")
-
-for _, row in df_filtrato.iterrows():
-    bollino = str(row.get('bollino', ''))
-    
-    if "🟢" in bollino:
-        badge = "🟢 EQUIVALENTE PERFETTO (STESSA RICETTA)"
-    elif "🟡" in bollino:
-        badge = "🟡 RICETTA SIMILE (GEMELLO)"
-    else:
-        badge = "🟠 SOLO STESSO STABILIMENTO"
-        
-    with st.container(border=True):
-        st.markdown(f"### {badge}")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("💸 **L'alternativa economica al Discount:**")
-            st.warning(f"✨ {row.get('discount')}")
-            st.caption(f"Code: {row.get('barcode_discount', 'Non mappato')}")
-        with col2:
-            st.markdown("👑 **Il Prodotto Originale di Marca:**")
-            st.info(f"✨ {row.get('marca')}")
-            st.caption(f"Code: {row.get('barcode_marca', 'Non mappato')}")
-            
-        st.divider()
-        st.caption(f"🏭 **Fabbricati entrambi a:** `{row.get('stabilimento', 'N/D')}` | Categoria: {row.get('categoria', 'Altro')}")
-        st.write(f"📋 **Esito dell'algoritmo:** {row.get('nota', '')}")
