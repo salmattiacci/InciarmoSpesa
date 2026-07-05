@@ -1,39 +1,60 @@
 import streamlit as st
 import pandas as pd
 
-# 1. Configurazione UI Mobile-First
-st.set_page_config(
-    page_title="L'Inciarmo della Spesa", 
-    page_icon="🛒", 
-    layout="centered"
-)
-
+st.set_page_config(page_title="L'Inciarmo della Spesa v2", page_icon="🛒", layout="centered")
 st.title("L'Inciarmo della Spesa 🛒")
-st.caption("Database Statico ospitato direttamente su GitHub")
+st.caption("Algoritmo di match per Stabilimento + Analisi Molecolare degli Ingredienti")
 
-# 2. Configura il link del tuo file
-# IMPORTANTE: L'URL deve iniziare con 'raw.githubusercontent.com'
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/salmattiacci/InciarmoSpesa/main/prodotti.csv"
 
-# Funzione per caricare i dati con cache
-@st.cache_data(ttl=60)  # Ricarica automaticamente se modifichi il file su GitHub dopo 1 minuto
-def carica_dati_da_github(url):
+@st.cache_data(ttl=60)
+def carica_dati(url):
     try:
-        # Pandas è in grado di leggere un CSV direttamente da un URL web
-        df = pd.read_csv(url)
-        return df
-    except Exception as e:
-        st.error(f"Impossibile leggere il file dei dati da GitHub: {e}")
+        return pd.read_csv(url)
+    except:
         return pd.DataFrame()
 
-# Caricamento del database centralizzato
-df_prodotti = carica_dati_da_github(GITHUB_RAW_URL)
+df_prodotti = carica_dati(GITHUB_RAW_URL)
 
-# Interfaccia di Ricerca
-query = st.text_input("Cerca stabilimento, discount, marca o parola chiave...", placeholder="Es. biscotti, Coop, Eurospin, IT...")
+query = st.text_input("Cerca un prodotto, una marca o un codice stabilimento...", placeholder="Es. biscotti, Coop, Conad, IT...")
 
 if query:
     if not df_prodotti.empty:
+        # Cerca la parola chiave in tutte le colonne (nome, marca, stabilimento)
+        mask = df_prodotti.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
+        df_filtrato = df_prodotti[mask]
+        
+        if not df_filtrato.empty:
+            st.subheader(f"🔍 Sgami Rilevati ({len(df_filtrato)})")
+            
+            for _, row in df_filtrato.iterrows():
+                # Colora il box in base al livello di inciarmo degli ingredienti
+                bollino = row.get('bollino', '')
+                if "🟢" in bollino:
+                    border_color = "🟢"
+                elif "🟡" in bollino:
+                    border_color = "🟡"
+                else:
+                    border_color = "🟠"
+                    
+                with st.container(border=True):
+                    st.markdown(f"### {border_color} {row.get('bollino')}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.error(f"**Prodotto A:**")
+                        st.write(row.get('discount'))
+                    with col2:
+                        st.success(f"**Prodotto B:**")
+                        st.write(row.get('marca'))
+                        
+                    st.divider()
+                    st.caption(f"🏭 **Bollo CE di provenienza:** `{row.get('stabilimento')}`")
+                    st.info(f"📋 **Esito Analisi:** {row.get('nota')}")
+        else:
+            st.warning("Nessun incrocio trovato con questa parola chiave. L'algoritmo sta espandendo il database...")
+    else:
+        st.error("Database in fase di sincronizzazione su GitHub. Attendi un istante.")
         # Filtro universale su tutte le colonne del file CSV
         mask = df_prodotti.astype(str).apply(lambda x: x.str.contains(query, case=False)).any(axis=1)
         df_filtrato = df_prodotti[mask]
