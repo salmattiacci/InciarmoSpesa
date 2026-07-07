@@ -21,6 +21,9 @@ LISTINO_PREZZI_MEDIO = {
     "milks": {"marca": 1.59, "discount": 1.09}
 }
 
+# Questa lista serve SOLO a identificare le insegne dei supermercati, NON le marche leader.
+INSEGNE_SUPERMERCATI = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "penny", "ald"]
+
 def pulisci_bollino(testo):
     if not testo or pd.isna(testo): return ""
     pulito = re.sub(r'[^A-Z0-9]', '', str(testo).upper())
@@ -119,8 +122,6 @@ def esegui_pipeline():
     
     print("Generazione della cache degli sgami reali...")
     database_mappato = []
-    marchi_discount = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "galbusera", "amo essere bio", "tre mulini", "maribel", "sibamba", "blues"]
-    
     lista_prodotti = df_totale_raw.to_dict(orient="records")
     contatore_richieste = 0
     
@@ -151,8 +152,6 @@ def esegui_pipeline():
             
             is_acqua_o_singolo = "water" in cat1.lower() or "acque" in cat1.lower() or "beverages" in cat1.lower()
             
-            # FILTRO DI SICUREZZA AGGIORNATO (SOLUZIONE A):
-            # Se lo stabilimento coincide, richiediamo COMUNQUE uno score minimo del 65% per confermare il clone commerciale.
             if emb1_pulito and emb2_pulito and emb1_pulito != "NAN" and emb2_pulito != "NAN" and emb1_pulito == emb2_pulito:
                 if score >= 85:
                     match_valido = True
@@ -161,32 +160,56 @@ def esegui_pipeline():
                     match_valido = True
                     tipo_match = "🟡 Gemello (Stessa Fabbrica + Ricetta Simile)"
                 else:
-                    # Scartato: escono dallo stesso posto ma sono prodotti completamente diversi (Evita il caso Galbusera-Misura errato)
                     continue
-            
-            # Match basato solo sulla ricetta analoga nel database (senza bollino)
             elif cat1 == cat2 and cat1 != "Altro" and score >= 75 and not is_acqua_o_singolo:
                 match_valido = True
                 tipo_match = "🟢 Identico (Analisi Ricette DB)" if score > 85 else "🟡 Gemello (Ricetta Simile)"
 
             if match_valido:
-                b1_disc = any(d in brand1.lower() for d in marchi_discount)
-                b2_disc = any(d in brand2.lower() for d in marchi_discount)
-                
-                if b1_disc and not b2_disc:
-                    m_discount, n_discount, e_barcode = brand1, name1, code1
-                    m_marca, n_marca, m_barcode = brand2, name2, code2
-                else:
-                    m_discount, n_discount, e_barcode = brand2, name2, code2
-                    m_marca, n_marca, m_barcode = brand1, name1, code1
-                
+                # TENTATIVO DI RECUPERO PREZZI REALI SUBITO PER DIREZIONARE I RUOLI
                 usa_api_reale = contatore_richieste < 30
-                prezzo_disc = stimatore_prezzo(cat1, "discount", e_barcode if usa_api_reale else None)
-                prezzo_marca = stimatore_prezzo(cat1, "marca", m_barcode if usa_api_reale else None)
+                p1_prezzo_reale = cerca_prezzo_reale_api_sicura(code1) if usa_api_reale else None
+                p2_prezzo_reale = cerca_prezzo_reale_api_sicura(code2) if usa_api_reale else None
                 
                 if usa_api_reale:
                     contatore_richieste += 2
-                
+
+                # LOGICA DINAMICA DI ASSEGNAZIONE RUOLI (NO LISTE STATICHE DI MARCHE)
+                # Regola 1: Se abbiamo entrambi i prezzi reali, il più costoso è la Marca!
+                if p1_prezzo_reale and p2_prezzo_reale:
+                    if p1_prezzo_reale >= p2_prezzo_reale:
+                        m_marca, n_marca, m_barcode, prezzo_marca = brand1, name1, code1, p1_prezzo_reale
+                        m_discount, n_discount, e_barcode, prezzo_disc = brand2, name2, code2, p2_prezzo_reale
+                    else:
+                        m_marca, n_marca, m_barcode, prezzo_marca = brand2, name2, code2, p2_prezzo_reale
+                        m_discount, n_discount, e_barcode, prezzo_disc = brand1, name1, code1, p1_prezzo_reale
+                else:
+                    # Regola 2 (Fallback): Chi contiene un'insegna di supermercato nota nel brand è il discount.
+                    p1_is_supermercato = any(s in brand1.lower() for s in INSEGNE_SUPERMERCATI)
+                    p2_is_supermercato = any(s in brand2.lower() for s in INSEGNE_SUPERMERCATI)
+                    
+                    if p1_is_supermercato and not p2_is_supermercato:
+                        m_discount, n_discount, e_barcode = brand1, name1, code1
+                        m_marca, n_marca, m_barcode = brand2, name2, code2
+                    elif p2_is_supermercato and not p1_is_supermercato:
+                        m_discount, n_discount, e_barcode = brand2, name2, code2
+                        m_marca, n_marca, m_barcode = brand1, name1, code1
+                    else:
+                        # Regola 3: Se nessuno o entrambi sono supermercati, andiamo a stima statistica standard
+                        m_discount, n_discount, e_barcode = brand1, name1, code1
+                        m_marca, n_marca, m_barcode = brand2, name2, code2
+                    
+                    # Calcoliamo i prezzi di mercato se manca quello reale
+                    prezzo_disc = p1_prezzo_reale if p1_prezzo_reale else stimatore_prezzo(cat1, "discount", None)
+                    prezzo_marca = p2_prezzo_reale if p2_prezzo_reale else stimatore_prezzo(cat1, "marca", None)
+                    
+                    # Ulteriore check di sicurezza: Se per errore la stima del discount è più alta della marca, li invertiamo
+                    if prezzo_disc > prezzo_marca:
+                        prezzo_disc, prezzo_marca = prezzo_marca, prezzo_disc
+                        m_discount, m_marca = m_marca, m_discount
+                        n_discount, n_marca = n_marca, n_discount
+                        e_barcode, m_barcode = m_barcode, e_barcode
+
                 stabilimento_finale = emb1_pulito if (emb1_pulito and emb1_pulito != "NAN") else "Verificato da Ricetta"
                 
                 database_mappato.append({
@@ -212,4 +235,3 @@ def esegui_pipeline():
 
 if __name__ == "__main__":
     esegui_pipeline()
-                     
