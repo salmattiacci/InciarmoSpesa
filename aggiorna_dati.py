@@ -68,7 +68,6 @@ def scarica_tutti_prodotti_massa():
     url = "https://it.openfoodfacts.org/api/v2/search"
     tutti_i_prodotti = []
     
-    # Scarichiamo 3 pagine da 250 prodotti l'una invece di un blocco unico da 1000
     for pagina in range(1, 4):
         print(f"Scaricamento pagina {pagina}...")
         params = {
@@ -83,7 +82,6 @@ def scarica_tutti_prodotti_massa():
         }
         headers = {"User-Agent": "InciarmoSpesaBot/5.0"}
         
-        # Tentativi di riprovo (Retry loop)
         for tentativo in range(3):
             try:
                 res = requests.get(url, params=params, headers=headers, timeout=15)
@@ -96,9 +94,9 @@ def scarica_tutti_prodotti_massa():
                     print(f"Server ha risposto con status {res.status_code}, riprovo...")
             except Exception as e:
                 print(f"Tentativo {tentativo + 1} fallito per timeout o errore: {e}")
-            time.sleep(2) # Pausa prima del prossimo tentativo
+            time.sleep(2)
             
-        time.sleep(1) # Pausa tra le pagine per non sovraccaricare il server
+        time.sleep(1)
         
     print(f"Scaricamento completato. Totale prodotti grezzi raccolti: {len(tutti_i_prodotti)}")
     return tutti_i_prodotti
@@ -106,7 +104,7 @@ def scarica_tutti_prodotti_massa():
 def esegui_pipeline():
     nuovi_prodotti = scarica_tutti_prodotti_massa()
     if not nuovi_prodotti:
-        print("Nessun dato scaricato dopo tutti i tentativi. Verificare connessione o stato API di OFF.")
+        print("Nessun dato scaricato dopo tutti i tentativi.")
         return
         
     df_nuovi = pd.DataFrame(nuovi_prodotti)
@@ -153,13 +151,21 @@ def esegui_pipeline():
             
             is_acqua_o_singolo = "water" in cat1.lower() or "acque" in cat1.lower() or "beverages" in cat1.lower()
             
+            # FILTRO DI SICUREZZA AGGIORNATO (SOLUZIONE A):
+            # Se lo stabilimento coincide, richiediamo COMUNQUE uno score minimo del 65% per confermare il clone commerciale.
             if emb1_pulito and emb2_pulito and emb1_pulito != "NAN" and emb2_pulito != "NAN" and emb1_pulito == emb2_pulito:
-                match_valido = True
-                if score > 75: tipo_match = "🟢 Identico (Stessa Fabbrica + Ricetta)"
-                elif score > 45: tipo_match = "🟡 Gemello (Stessa Fabbrica + Ricetta Simile)"
-                else: tipo_match = "🟠 Solo Stessa Fabbrica"
+                if score >= 85:
+                    match_valido = True
+                    tipo_match = "🟢 Identico (Stessa Fabbrica + Ricetta)"
+                elif score >= 65:
+                    match_valido = True
+                    tipo_match = "🟡 Gemello (Stessa Fabbrica + Ricetta Simile)"
+                else:
+                    # Scartato: escono dallo stesso posto ma sono prodotti completamente diversi (Evita il caso Galbusera-Misura errato)
+                    continue
             
-            elif cat1 == cat2 and cat1 != "Altro" and score >= 70 and not is_acqua_o_singolo:
+            # Match basato solo sulla ricetta analoga nel database (senza bollino)
+            elif cat1 == cat2 and cat1 != "Altro" and score >= 75 and not is_acqua_o_singolo:
                 match_valido = True
                 tipo_match = "🟢 Identico (Analisi Ricette DB)" if score > 85 else "🟡 Gemello (Ricetta Simile)"
 
@@ -175,7 +181,6 @@ def esegui_pipeline():
                     m_marca, n_marca, m_barcode = brand1, name1, code1
                 
                 usa_api_reale = contatore_richieste < 30
-                
                 prezzo_disc = stimatore_prezzo(cat1, "discount", e_barcode if usa_api_reale else None)
                 prezzo_marca = stimatore_prezzo(cat1, "marca", m_barcode if usa_api_reale else None)
                 
@@ -201,10 +206,10 @@ def esegui_pipeline():
         df_cache = pd.DataFrame(database_mappato)
         df_cache = df_cache.drop_duplicates(subset=["discount", "marca"])
         df_cache.to_csv("prodotti.csv", index=False)
-        print(f"Successo! Mappati {len(df_cache)} prodotti nel DB finale.")
+        print(f"Successo! Mappati {len(df_cache)} prodotti puliti e sicuri nel DB finale.")
     else:
-        print("Nessun match valido trovato in questa sessione.")
+        print("Nessun match valido e sicuro trovato in questa sessione.")
 
 if __name__ == "__main__":
     esegui_pipeline()
-                    
+                     
