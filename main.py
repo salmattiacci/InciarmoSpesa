@@ -6,22 +6,30 @@ import re
 
 FILE_CACHE = "prodotti.csv"
 
-# Insegne per controllo inversione ruoli
+# Insegne per il controllo dell'inversione dei ruoli (Marca vs Discount)
 INSEGNE_SUPERMERCATI = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "penny", "aldi"]
 
-# Configurazione pagina Streamlit
+# Configurazione della pagina Streamlit
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
 def pulisci_bollino(testo):
     if not testo or pd.isna(testo): return ""
     
-    # Isola il primo codice CE italiano valido (es. IT 03 171 CE o IT 12345 CE) evitando fusioni
-    match = re.search(r'(IT\s*\d+\s*CE|IT\s*\d+/\d+\s*CE|\d+\s*CE)', str(testo).upper())
+    # Trasforma in maiuscolo e rimuove gli spazi iniziali/finali
+    testo_str = str(testo).upper().strip()
+    
+    # 1. Cerca il formato standard italiano ovunque nella stringa (es. IT 03 171 CE)
+    match = re.search(r'(IT\s*\d+[\s*\/]*\d*\s*CE|\d+[\s*\/]*\d*\s*CE)', testo_str)
     if match:
         return re.sub(r'\s+', '', match.group(1))
         
-    # Fallback standard se il pattern italiano non è intercettato
-    pulito = re.sub(r'[^A-Z0-9]', '', str(testo).upper()).replace("EMB", "")
+    # 2. Fallback elastico: se ci sono prefissi o sporcizia, estrae solo il blocco compatto (es. IT03171CE)
+    match_elastico = re.search(r'(IT\d+CE|\d+CE)', re.sub(r'\s+', '', testo_str))
+    if match_elastico:
+        return match_elastico.group(1)
+        
+    # 3. Fallback estremo per stringhe generiche senza suffisso CE
+    pulito = re.sub(r'[^A-Z0-9]', '', testo_str).replace("EMB", "")
     return pulito[:12] if len(pulito) > 12 else pulito
 
 def cerca_e_archivia_clone_live(barcode_utente):
@@ -63,7 +71,7 @@ def cerca_e_archivia_clone_live(barcode_utente):
         nome_utente = prodotto.get("product_name", "Prodotto sconosciuto")
         
         if not emb_codice or emb_codice == "NAN":
-            return {"errore": f"Trovato: **{nome_utente} [{brand_utente}]**. Purtroppo non ha il codice stabilimento inserito nel database, impossibile trovare cloni."}, "ERRORE"
+            return {"errore": f"Trovato: **{nome_utente} [{brand_utente}]**. Purtroppo questo prodotto non ha un codice stabilimento utilizzabile nel database di Open Food Facts, impossibile mappare i cloni."}, "ERRORE"
 
         # 3. CHIAMATA LIVE: CERCA CLONI CON LO STESSO STABILIMENTO ISOLATO
         url_fabbrica = "https://it.openfoodfacts.org/api/v2/search"
@@ -84,11 +92,11 @@ def cerca_e_archivia_clone_live(barcode_utente):
             
             if brand_clone != "Generico" and brand_clone.lower() != brand_utente.lower() and code_clone != barcode_utente:
                 
-                # Definizione preliminare ruoli
+                # Assegnazione iniziale dei ruoli
                 m_marca, n_marca, m_barcode = brand_utente, nome_utente, barcode_utente
                 m_discount, n_discount, e_barcode = brand_clone, nome_clone, code_clone
                 
-                # Check inversione basato su liste insegne note
+                # Controllo e correzione inversione ruoli (es. se la marca finisce sotto discount)
                 if any(s in m_marca.lower() for s in INSEGNE_SUPERMERCATI) and not any(s in m_discount.lower() for s in INSEGNE_SUPERMERCATI):
                     m_marca, m_discount = m_discount, m_marca
                     n_marca, n_discount = n_discount, n_marca
@@ -118,10 +126,10 @@ def cerca_e_archivia_clone_live(barcode_utente):
                 df_aggiornato.to_csv(FILE_CACHE, index=False)
                 return nuovo_match, "LIVE"
                 
-        return {"errore": f"Trovato '{nome_utente} [{brand_utente}]' (Fabbrica: {emb_codice}), ma non ci sono marchi alternativi censiti per questo stabilimento."}, "ERRORE"
+        return {"errore": f"Trovato '{nome_utente} [{brand_utente}]' (Fabbrica identificata: {emb_codice}), ma al momento non ci sono marchi alternativi o private label censiti per questo stabilimento."}, "ERRORE"
         
     except Exception as e:
-        return {"errore": f"Errore di rete: {str(e)}"}, "ERRORE"
+        return {"errore": f"Errore di rete durante la richiesta live: {str(e)}"}, "ERRORE"
 
 
 # --- INTERFACCIA GRAFICA STREAMLIT ---
@@ -129,12 +137,12 @@ def cerca_e_archivia_clone_live(barcode_utente):
 st.title("L'Inciarmo della Spesa 🛒")
 st.subheader("Veri Inciarmi Industriali + Risparmio On-Demand")
 
-# Input utente
+# Input utente per il codice a barre
 barcode = st.text_input("Scannerizza o digita il codice a barre del prodotto:", placeholder="Es. 8017596064011")
 
 if st.button("Trova Inciarmo 🎯", type="primary"):
     if barcode.strip():
-        with st.spinner("Ricerca e analisi dello stabilimento ministeriale in corso..."):
+        with st.spinner("Analisi dello stabilimento ministeriale in corso..."):
             risultato, stato = cerca_e_archivia_clone_live(barcode)
             
         if stato == "ERRORE":
@@ -156,12 +164,12 @@ if st.button("Trova Inciarmo 🎯", type="primary"):
                 
             st.success(f"🏭 **Codice Stabilimento Unico:** {risultato['stabilimento']}")
             
-            # Riga blocco Markdown corretta
+            # Formattazione blockquote compatibile con Streamlit
             st.markdown(f"> 📋 **Nota d'ispezione:** {risultato['nota']}")
             
-            # Spazio Crowdsourcing Prezzi
+            # Sezione Crowdsourcing Prezzi
             st.write("---")
             st.write("ℹ️ *I prezzi indicano 'N/A'? Aiuta la community! Se sei al supermercato, inserisci quanto li hai pagati per aggiornare il database.*")
     else:
         st.warning("Inserisci un codice a barre valido prima di cliccare.")
-            
+                
