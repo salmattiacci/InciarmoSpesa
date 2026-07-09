@@ -125,7 +125,7 @@ if st.button("Trova Inciarmo 🎯", type="primary"):
             else:
                 st.caption("🌐 *Nuovo inciarmo scovato in tempo reale e salvato nel database!*")
                 
-            # Mostra i dati formattati come volevi tu
+            # Mostra i dati formattati
             st.markdown(f"### {risultato['bollino']}")
             
             col1, col2 = st.columns(2)
@@ -135,11 +135,13 @@ if st.button("Trova Inciarmo 🎯", type="primary"):
                 st.warning(f"👑 **Prodotto Comparato:**\n\n✨ {risultato['marca']}\n\n💰 Prezzo: **{risultato['prezzo_marca']}**")
                 
             st.success(f"🏭 **Codice Stabilimento Unico:** {risultato['stabilimento']}")
-            st.blockquote(f"📋 **Nota d'ispezione:** {risultato['nota']}")
+            
+            # Riga corretta senza st.blockquote
+            st.markdown(f"> 📋 **Nota d'ispezione:** {risultato['nota']}")
             
             # Spazio Crowdsourcing Prezzi
             st.write("---")
             st.write("ℹ️ *I prezzi indicano 'N/A'? Aiuta la community! Se sei al supermercato, inserisci quanto li hai pagati per aggiornare il database.*")
     else:
         st.warning("Inserisci un codice a barre valido prima di cliccare.")
-        
+            
