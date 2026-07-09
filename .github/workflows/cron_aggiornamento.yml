@@ -1,49 +1,43 @@
-name: Sincronizzazione Automatica Prodotti
+name: Aggiornamento Dati Inciarmo Spesa
 
 on:
   schedule:
-    # Gira automaticamente ogni giorno alle 4 del mattino
-    - cron: '0 4 * * *'
-  workflow_dispatch: # Ti permette di avviarlo a mano con un click
+    # Esegue la pipeline ogni giorno alle 3 del mattino
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    # Permette di avviare la pipeline manualmente dall'interfaccia di GitHub
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      
-    steps:
-    # Aggiornato da v3 a v4 (Supporta Node 24 nativo)
-    - name: Accedi alla Repository
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
 
-    # Aggiornato da v4 a v5 (Supporta Node 24 nativo)
-    - name: Configura Python
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+        cache: 'pip' # Ottimizza i tempi di build riutilizzando la cache delle librerie
 
-    - name: Installa Librerie
+    - name: Install dependencies
       run: |
-        pip install requests pandas
+        python -m pip install --upgrade pip
+        pip install requests pandas beautifulsoup4 lxml
 
-    - name: Esegui lo Script di Fetch Prodotti
+    - name: Run pipeline
       run: python aggiorna_dati.py
 
-    - name: Salva le modifiche su GitHub
+    - name: Commit and Push changes
       run: |
-        git config --global user.name 'InciarmoBot'
-        git config --global user.email 'bot@inciarmo.local'
-        git add prodotti.csv
-        git commit -m "Aggiornamento automatico prodotti da API" || exit 0
-        git push
-    - name: Salva le modifiche su GitHub
-      run: |
-        git config --global user.name 'InciarmoBot'
-        git config --global user.email 'bot@inciarmo.local'
-        git add prodotti.csv prodotti_raw.csv
-        git commit -m "Aggiornamento database storico e cache sgami" || exit 0
-        git push
-        
+        git config --global user.name "InciarmoSpesaBot"
+        git config --global user.email "bot@inciarmospesa.local"
+        # Controlla se ci sono modifiche nei file prodotti.csv o prodotti_raw.csv prima di fare il push
+        if [[ -n "$(git status --porcelain)" ]]; then
+          git add prodotti.csv prodotti_raw.csv
+          git commit -m "Aggiornamento automatico database prodotti e prezzi live"
+          git push
+        else
+          echo "Nessun nuovo dato o variazione di prezzo rilevata."
+        fi
