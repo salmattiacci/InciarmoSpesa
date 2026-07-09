@@ -6,12 +6,23 @@ import re
 
 FILE_CACHE = "prodotti.csv"
 
+# Insegne per controllo inversione ruoli
+INSEGNE_SUPERMERCATI = ["eurospin", "conad", "coop", "esselunga", "lidl", "carrefour", "md", "todis", "selex", "pam", "penny", "aldi"]
+
 # Configurazione pagina Streamlit
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
 def pulisci_bollino(testo):
     if not testo or pd.isna(testo): return ""
-    return re.sub(r'[^A-Z0-9]', '', str(testo).upper()).replace("EMB", "")
+    
+    # Isola il primo codice CE italiano valido (es. IT 03 171 CE o IT 12345 CE) evitando fusioni
+    match = re.search(r'(IT\s*\d+\s*CE|IT\s*\d+/\d+\s*CE|\d+\s*CE)', str(testo).upper())
+    if match:
+        return re.sub(r'\s+', '', match.group(1))
+        
+    # Fallback standard se il pattern italiano non è intercettato
+    pulito = re.sub(r'[^A-Z0-9]', '', str(testo).upper()).replace("EMB", "")
+    return pulito[:12] if len(pulito) > 12 else pulito
 
 def cerca_e_archivia_clone_live(barcode_utente):
     barcode_utente = str(barcode_utente).strip()
@@ -54,7 +65,7 @@ def cerca_e_archivia_clone_live(barcode_utente):
         if not emb_codice or emb_codice == "NAN":
             return {"errore": f"Trovato: **{nome_utente} [{brand_utente}]**. Purtroppo non ha il codice stabilimento inserito nel database, impossibile trovare cloni."}, "ERRORE"
 
-        # 3. CHIAMATA LIVE: CERCA CLONI CON LO STESSO STABILIMENTO
+        # 3. CHIAMATA LIVE: CERCA CLONI CON LO STESSO STABILIMENTO ISOLATO
         url_fabbrica = "https://it.openfoodfacts.org/api/v2/search"
         params = {
             "action": "process",
@@ -73,14 +84,23 @@ def cerca_e_archivia_clone_live(barcode_utente):
             
             if brand_clone != "Generico" and brand_clone.lower() != brand_utente.lower() and code_clone != barcode_utente:
                 
-                # Abbiamo lo sgamo!
+                # Definizione preliminare ruoli
+                m_marca, n_marca, m_barcode = brand_utente, nome_utente, barcode_utente
+                m_discount, n_discount, e_barcode = brand_clone, nome_clone, code_clone
+                
+                # Check inversione basato su liste insegne note
+                if any(s in m_marca.lower() for s in INSEGNE_SUPERMERCATI) and not any(s in m_discount.lower() for s in INSEGNE_SUPERMERCATI):
+                    m_marca, m_discount = m_discount, m_marca
+                    n_marca, n_discount = n_discount, n_marca
+                    m_barcode, e_barcode = e_barcode, m_barcode
+
                 nuovo_match = {
                     "stabilimento": emb_codice,
                     "categoria": categoria,
-                    "discount": f"{nome_clone} [{brand_clone}]",
-                    "marca": f"{nome_utente} [{brand_utente}]",
-                    "barcode_discount": str(code_clone),
-                    "barcode_marca": str(barcode_utente),
+                    "discount": f"{n_discount} [{m_discount}]",
+                    "marca": f"{n_marca} [{m_marca}]",
+                    "barcode_discount": str(e_barcode),
+                    "barcode_marca": str(m_barcode),
                     "prezzo_discount": "N/A",  
                     "prezzo_marca": "N/A",     
                     "nota": "Verificato live tramite codice stabilimento unico ministeriale.",
@@ -136,7 +156,7 @@ if st.button("Trova Inciarmo 🎯", type="primary"):
                 
             st.success(f"🏭 **Codice Stabilimento Unico:** {risultato['stabilimento']}")
             
-            # Riga corretta senza st.blockquote
+            # Riga blocco Markdown corretta
             st.markdown(f"> 📋 **Nota d'ispezione:** {risultato['nota']}")
             
             # Spazio Crowdsourcing Prezzi
