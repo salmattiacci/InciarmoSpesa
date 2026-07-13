@@ -5,4 +5,5 @@ requests
 pandas
 psycopg2-binary
 SQLAlchemy
+beautifulsoup4
 
