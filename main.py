@@ -29,8 +29,7 @@ def pulisci_bollino(testo):
 
 def estrai_prezzo_web_gratis(nome_prodotto, brand):
     """
-    Scraper Fai-Da-Te 100% Gratis. Usa DuckDuckGo Lite (senza JS e senza blocchi)
-    per trovare il prezzo del prodotto sui volantini o siti di spesa italiani.
+    Scraper Fai-Da-Te 100% Gratis via DuckDuckGo Lite.
     """
     if not nome_prodotto or nome_prodotto == "Prodotto sconosciuto":
         return "N/A"
@@ -39,33 +38,28 @@ def estrai_prezzo_web_gratis(nome_prodotto, brand):
     url = "https://lite.duckduckgo.com/lite/"
     data = {"q": query}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     }
     
     try:
-        # Piccolo delay casuale per simulare l'umano ed essere super sicuri
-        time.sleep(random.uniform(0.5, 1.5))
-        res = requests.post(url, data=data, headers=headers, timeout=8)
+        time.sleep(random.uniform(0.3, 0.8))  # Delay ridotto per evitare timeout su Streamlit Cloud
+        res = requests.post(url, data=data, headers=headers, timeout=5)
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
             testo_pagina = soup.get_text()
             
-            # Cerca pattern di prezzi in Euro (es: 1,49€, € 2.50, 0.99 €)
-            prezzi_trovati = re.findall(r'(\d+,\d{2})\s*€|€\s*(\d+,\d{2})|(\d+\.\d{2})\s*€', testo_pagina)
+            prezzi_trovati = re.findall(r'(\d+密,\d{2})\s*€|€\s*(\d+,\d{2})|(\d+\.\d{2})\s*€', testo_pagina)
             validi = []
             for p in prezzi_trovati:
-                # Prende il gruppo regex che ha catturato il testo
                 pulito = p[0] if p[0] else (p[1] if p[1] else p[2])
                 if pulito:
                     val_float = float(pulito.replace(',', '.'))
-                    # Esclude micro-prezzi sballati o errori di lettura (es. pesi in kg o percentuali)
                     if 0.40 < val_float < 35.0:
                         validi.append(val_float)
             
             if validi:
-                # Restituisce il prezzo più basso o frequente trovato nei risultati
                 return f"{round(min(validi), 2)} €"
-    except Exception as e:
+    except:
         pass
     return "N/A"
 
@@ -88,16 +82,18 @@ def cerca_e_archivia_clone_live(barcode_utente):
 
     # 2. CHIAMATA LIVE SUL PRODOTTO SCANSIONATO
     url_prod = f"https://it.openfoodfacts.org/api/v2/product/{barcode_utente}.json"
-    headers = {"User-Agent": "InciarmoSpesaStreamlit/6.0 (Live Engine)"}
+    
+    # User-Agent personalizzato e descrittivo per evitare i blocchi di Open Food Facts
+    headers = {"User-Agent": "InciarmoSpesaApp/1.0 (https://github.com/tuo-username/inciarmospesa; contact@tuomail.com) Python-Requests"}
     
     try:
-        res = requests.get(url_prod, headers=headers, timeout=10)
+        res = requests.get(url_prod, headers=headers, timeout=15) # Timeout aumentato a 15s per stabilità
         if res.status_code != 200: 
-            return {"errore": "Errore di connessione con il database internazionale."}, "ERRORE"
+            return {"errore": f"Il database Open Food Facts ha risposto con codice {res.status_code}. Riprova tra pochi secondi."}, "ERRORE"
         
         dati = res.json()
         if dati.get("status") == 0: 
-            return {"errore": "Codice a barre sconosciuto o non censito in Italia."}, "ERRORE"
+            return {"errore": "Codice a barre sconosciuto o non ancora censito in Italia."}, "ERRORE"
         
         prodotto = dati.get("product", {})
         emb_codice = pulisci_bollino(prodotto.get("emb_codes", ""))
@@ -108,7 +104,7 @@ def cerca_e_archivia_clone_live(barcode_utente):
         nome_utente = prodotto.get("product_name", "Prodotto sconosciuto")
         
         if not emb_codice or emb_codice == "NAN":
-            return {"errore": f"Trovato: **{nome_utente} [{brand_utente}]**. Purtroppo questo prodotto non ha un codice stabilimento valido inserito su Open Food Facts, impossibile trovare i cloni."}, "ERRORE"
+            return {"errore": f"Trovato: **{nome_utente} [{brand_utente}]**. Purtroppo questo prodotto non ha un codice stabilimento inserito su Open Food Facts, impossibile trovare i cloni."}, "ERRORE"
 
         # 3. CHIAMATA LIVE: CERCA CLONI CON LO STESSO STABILIMENTO ISOLATO
         url_fabbrica = "https://it.openfoodfacts.org/api/v2/search"
@@ -119,7 +115,7 @@ def cerca_e_archivia_clone_live(barcode_utente):
             "page_size": 50
         }
         
-        res_fabbrica = requests.get(url_fabbrica, params=params, headers=headers, timeout=10)
+        res_fabbrica = requests.get(url_fabbrica, params=params, headers=headers, timeout=15)
         cloni_trovati = res_fabbrica.json().get("products", [])
         
         for clone in cloni_trovati:
@@ -139,10 +135,9 @@ def cerca_e_archivia_clone_live(barcode_utente):
                     n_marca, n_discount = n_discount, n_marca
                     m_barcode, e_barcode = e_barcode, m_barcode
 
-                # SCRAPING LIVE E GRATUITO DEI PREZZI PRIMA DI SALVARE IL RECORD
-                with st.spinner("Estrazione prezzi reali dal web in corso..."):
-                    prezzo_m = estrai_prezzo_web_gratis(n_marca, m_marca)
-                    prezzo_d = estrai_prezzo_web_gratis(n_discount, m_discount)
+                # SCRAPING LIVE DEI PREZZI
+                prezzo_m = estrai_prezzo_web_gratis(n_marca, m_marca)
+                prezzo_d = estrai_prezzo_web_gratis(n_discount, m_discount)
 
                 nuovo_match = {
                     "stabilimento": emb_codice,
@@ -166,12 +161,12 @@ def cerca_e_archivia_clone_live(barcode_utente):
                     df_aggiornato = df_nuovo
                 
                 df_aggiornato.to_csv(FILE_CACHE, index=False)
-                return नया_match, "LIVE"
+                return nuovo_match, "LIVE"
                 
-        return {"errore": f"Trovato '{nome_utente} [{brand_utente}]' (Fabbrica: {emb_codice}), ma al momento non ci sono marchi alternativi censiti per questo stabilimento."}, "ERRORE"
+        return {"errore": f"Trovato '{nome_utente} [{brand_utente}]' (Fabbrica: {emb_codice}), ma al momento non ci sono marchi alternativi o private label censiti per questo stabilimento."}, "ERRORE"
         
     except Exception as e:
-        return {"errore": f"Errore di rete: {str(e)}"}, "ERRORE"
+        return {"errore": f"Errore di rete o timeout durante la richiesta live: {str(e)}"}, "ERRORE"
 
 
 # --- INTERFACCIA GRAFICA STREAMLIT ---
@@ -183,7 +178,7 @@ barcode = st.text_input("Scannerizza o digita il codice a barre del prodotto:", 
 
 if st.button("Trova Inciarmo 🎯", type="primary"):
     if barcode.strip():
-        with st.spinner("Analisi dello stabilimento ministeriale in corso..."):
+        with st.spinner("Analisi dello stabilimento ministeriale e ricerca prezzi in corso..."):
             risultato, stato = cerca_e_archivia_clone_live(barcode)
             
         if stato == "ERRORE":
