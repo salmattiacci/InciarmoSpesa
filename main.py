@@ -19,8 +19,8 @@ def pulisci_bollino(testo):
     return re.sub(r'[^A-Z0-9]', '', testo_str)[:10]
 
 def inizializza_database_se_vuoto():
-    """Crea un database di partenza con veri inciarmi storici italiani per i test"""
-    if not os.path.exists(FILE_CACHE):
+    """Crea un database di partenza se il file manca o è completamente vuoto (0 byte)"""
+    if not os.path.exists(FILE_CACHE) or os.path.getsize(FILE_CACHE) == 0:
         dati_partenza = [
             {
                 "barcode": "8002164000306", # Latte Sterilgarda
@@ -56,7 +56,7 @@ def inizializza_database_se_vuoto():
         df = pd.DataFrame(dati_partenza)
         df.to_csv(FILE_CACHE, index=False)
 
-# Inizializza il file se non esiste
+# Inizializza o ripristina il file CSV
 inizializza_database_se_vuoto()
 
 # --- INTERFACCIA GRAFICA ---
@@ -74,7 +74,7 @@ if barcode:
     match = df_db[df_db['barcode'] == barcode]
     
     if not match.empty:
-        # CASO 1: PRODOTTO TROVATO (FULMINEO E ZERO ERRORI)
+        # CASO 1: PRODOTTO TROVATO
         risultato = match.iloc[0]
         st.markdown(f"### {risultato['bollino']}")
         
@@ -86,7 +86,7 @@ if barcode:
             
         st.success(f"🏭 **Codice Stabilimento Unico:** {risultato['stabilimento']}")
     else:
-        # CASO 2: PRODOTTO NON TROVATO -> CROWDSOURCING IN 2 CLIP
+        # CASO 2: PRODOTTO NON TROVATO -> CROWDSOURCING
         st.error("🕵️‍♂️ Inciarmo non ancora censito nel nostro database!")
         st.info("Diventa un ispettore della spesa! Guarda il retro della confezione e inserisci i dati al volo per sbloccare i cloni:")
         
@@ -103,14 +103,14 @@ if barcode:
                 if stabilimento_input and nome_prodotto_input:
                     bollino_pulito = pulisci_bollino(stabilimento_input)
                     
-                    # Logica intelligente: capisce se è un discount o una marca in base al testo inserito
+                    # Capisce se è un discount o una marca in base al testo inserito
                     is_discount = any(s in nome_prodotto_input.lower() for s in INSEGNE_SUPERMERCATI)
                     
                     # Controlla se abbiamo già quel bollino registrato da altri per trovare il clone automatico
                     cloni_fabbrica = df_db[df_db['stabilimento'] == bollino_pulito]
                     
                     if not cloni_fabbrica.empty:
-                        # Se la fabbrica esiste già, colleghiamo il nuovo prodotto al vecchio!
+                        # Se la fabbrica esiste già, colleghiamo il nuovo prodotto al vecchio
                         record_fabbrica = cloni_fabbrica.iloc[0]
                         nuovo_record = {
                             "barcode": barcode,
@@ -135,12 +135,13 @@ if barcode:
                             "bollino": f"🟡 Fabbrica Censita ({bollino_pulito}) - In attesa di cloni"
                         }
                     
-                    # Salva nel CSV locale su GitHub (Streamlit Cloud scrive temporaneamente in locale)
+                    # Salva nel CSV locale
                     df_nuovo = pd.DataFrame([nuovo_record])
                     df_aggiornato = pd.concat([df_db, df_nuovo]).drop_duplicates(subset=["barcode"])
                     df_aggiornato.to_csv(FILE_CACHE, index=False)
                     
                     st.balloons()
-                    st.success("🎉 Grazie! Prodotto registrato con successo. Ricarica la pagina o digita di nuovo il codice per vedere il risultato aggiornato!")
+                    st.success("🎉 Grazie! Prodotto registrato con successo. Digita di nuovo il codice per vedere il risultato aggiornato!")
                 else:
                     st.warning("Per favore, compila almeno il Codice Stabilimento e il Nome Prodotto.")
+                        
