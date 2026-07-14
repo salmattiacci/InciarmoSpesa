@@ -99,7 +99,8 @@ if barcode:
             categoria_input = st.selectbox("3. Categoria", ["Latticini", "Biscotti e Dolci", "Pasta e Riso", "Sughi e Conserve", "Surgelati", "Altro"])
             prezzo_input = st.text_input("4. Prezzo che vedi a scaffale (Opzionale)", placeholder="Es: 1.20")
             
-            submit_button = st.form_submit_with_button_label("Registra Inciarmo e Condividi 🎯")
+            submit_button = st.form_submit_button("Registra Inciarmo e Condividi 🎯")
+
             
             if submit_button:
                 if stabilimento_input and nome_prodotto_input:
