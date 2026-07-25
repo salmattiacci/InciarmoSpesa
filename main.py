@@ -174,6 +174,7 @@ def controlla_corrispondenza_in_sessione(nuovo_prodotto):
 
 
 
+def interroga_off_completo(barcode):
     url = f"https://world.openfoodfacts.net/api/v2/product/{barcode}.json"
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
