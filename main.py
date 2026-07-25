@@ -269,6 +269,18 @@ if testo_ricerca:
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
 
+['nome']}")
+        elif bollino_pulito:
+            st.caption("Nessuna corrispondenza (per ora) con altri prodotti cercati in questa sessione.")
+
+        st.session_state.collezione.append(prodotto_corrente)
+
+        with st.expander(f"📋 Prodotti cercati in questa sessione ({len(st.session_state.collezione)})"):
+            for p in st.session_state.collezione:
+                st.write(f"- {p['marca']} — {p['nome']} (bollino: {p['bollino'] or 'n/d'})")
+    else:
+        st.error("Prodotto non identificato nei database di tracciamento rapidi.")
+
     for prezzo_tag in soup.find_all(string=re.compile(r"€\s*\d+[.,]\d{2}")):
         contenitore = prezzo_tag.find_parent("div") or prezzo_tag.find_parent()
         testo = contenitore.get_text(" ", strip=True) if contenitore else ""
