@@ -101,24 +101,15 @@ def cerca_prodotto_deco(nome_prodotto):
 
 def ottieni_prezzo_reale_definitivo(barcode, nome_prodotto):
     """
-    1. Cerca live nel catalogo Decò (dati sempre freschi, no cache).
-    2. Se non trova nulla, prova Open Prices (database collaborativo).
-    3. Come ultima spiaggia, cerca nel volantino Decò corrente.
+    1. Prova Open Prices (database collaborativo di prezzi reali).
+    2. Come ultima spiaggia, cerca nel volantino Decò corrente.
     Restituisce solo ed esclusivamente prezzi reali, senza stime.
+    (Il catalogo Decò live NON espone il prezzo senza una sessione con
+    negozio selezionato, quindi non viene usato come fonte prezzo qui.)
     """
     barcode_pulito = str(barcode).strip()
 
-    # 1. TENTATIVO: catalogo Decò live
-    prodotto_deco = cerca_prodotto_deco(nome_prodotto)
-    if prodotto_deco:
-        # NOTA: adatta questi nomi di campo quando conosci la struttura
-        # esatta della risposta (guarda deco_catalogo_raw.json)
-        prezzo = prodotto_deco.get("price") or prodotto_deco.get("prezzo")
-        nome_deco = prodotto_deco.get("name") or prodotto_deco.get("title") or nome_prodotto
-        if prezzo:
-            return f"{prezzo} € (Catalogo Decò live: {nome_deco})"
-
-    # 2. TENTATIVO: API Open Prices
+    # 1. TENTATIVO: API Open Prices
     url_prices = f"https://prices.openfoodfacts.org/api/v1/prices?product_code={barcode_pulito}"
     try:
         response = requests.get(url_prices, headers=HEADERS, timeout=8)
@@ -219,13 +210,20 @@ if testo_ricerca:
         if not info_prodotto["success"] and not e_barcode(testo_ricerca):
             prodotto_deco_diretto = cerca_prodotto_deco(testo_ricerca)
             if prodotto_deco_diretto:
-                nome_trovato = prodotto_deco_diretto.get("name") or prodotto_deco_diretto.get("title") or testo_ricerca
+                nome_trovato = prodotto_deco_diretto.get("name") or testo_ricerca
+                codice_deco = prodotto_deco_diretto.get("code")
+
+                # Con il barcode vero del prodotto Decò, proviamo OFF per lo stabilimento
+                info_off_deco = interroga_off_completo(codice_deco) if codice_deco else {"success": False}
+
                 info_prodotto = {
                     "success": True,
                     "nome": nome_trovato,
                     "marca": "Decò",
-                    "stabilimento": "",  # il catalogo Decò non espone questo dato
+                    "stabilimento": info_off_deco.get("stabilimento", "") if info_off_deco["success"] else "",
                 }
+                if codice_deco:
+                    barcode = codice_deco
 
     if info_prodotto["success"]:
         st.success("🔥 **Dati intercettati con successo!**")
@@ -268,4 +266,3 @@ if testo_ricerca:
                 st.write(f"- {p['marca']} — {p['nome']} (bollino: {p['bollino'] or 'n/d'})")
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-
