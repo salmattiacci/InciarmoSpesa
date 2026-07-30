@@ -227,6 +227,9 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
             continue
         prodotto = prodotto_da_off_json(p)
         if prodotto:
+            # senza questo, il confronto stabilimento sarebbe fra un codice
+            # pulito (es. "RUMMOSPAVI") e un indirizzo grezzo mai uguali
+            prodotto.stabilimento = pulisci_bollino(prodotto.stabilimento) or None
             candidati.append(prodotto)
     return candidati, diagnostica
 
@@ -326,15 +329,32 @@ if testo_ricerca:
             corrispondenze.sort(key=lambda c: c.score_finale, reverse=True)
 
         if corrispondenze:
-            st.balloons()
-            st.success("🎯 **Guarda anche:**")
-            for c in corrispondenze[:5]:
-                st.write(
-                    f"- **{c.prodotto_b.marca}** — {c.prodotto_b.nome} "
-                    f"(ingredienti: {c.score_ingredienti}% · "
-                    f"stesso stabilimento: {'sì' if c.stesso_stabilimento else 'no'} · "
-                    f"score: {c.score_finale}%)"
-                )
+            match_private_label = [c for c in corrispondenze if e_private_label(c.prodotto_b.marca)]
+            match_altri_marchi = [c for c in corrispondenze if not e_private_label(c.prodotto_b.marca)]
+
+            if match_private_label:
+                st.balloons()
+                st.success("🎉 **RISPARMIO TROVATO! Stesso prodotto a marchio del distributore:**")
+                for c in match_private_label[:5]:
+                    st.write(
+                        f"- 🛒 **{c.prodotto_b.marca}** — {c.prodotto_b.nome} "
+                        f"(ingredienti: {c.score_ingredienti}% · "
+                        f"stesso stabilimento: {'sì' if c.stesso_stabilimento else 'no'} · "
+                        f"score: {c.score_finale}%)"
+                    )
+
+            if match_altri_marchi:
+                with st.expander(f"Altri marchi simili trovati ({len(match_altri_marchi)})"):
+                    for c in match_altri_marchi[:5]:
+                        st.write(
+                            f"- {c.prodotto_b.marca} — {c.prodotto_b.nome} "
+                            f"(ingredienti: {c.score_ingredienti}% · "
+                            f"stesso stabilimento: {'sì' if c.stesso_stabilimento else 'no'} · "
+                            f"score: {c.score_finale}%)"
+                        )
+
+            if not match_private_label:
+                st.caption("Match trovati solo con altri marchi famosi, nessun private label per ora.")
         else:
             st.caption("Nessun equivalente trovato con questa soglia.")
 
@@ -363,8 +383,9 @@ if testo_ricerca:
             for cand, score_ing in tutti_gli_score[:15]:
                 st.write(
                     f"- **{cand.marca}** — {cand.nome} → similarità ingredienti: {round(score_ing, 1)}% "
+                    f"· stabilimento: `{cand.stabilimento or 'n/d'}` "
                     f"(ingredienti: {cand.ingredienti[:80] or 'vuoto'}...)"
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-    
+            
