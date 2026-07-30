@@ -6,4 +6,4 @@ pandas
 psycopg2-binary
 SQLAlchemy
 beautifulsoup4
-
+rapidfuzz>=3.0.0
