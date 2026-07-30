@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import re
 
-from matching.match_prodotti import Prodotto, confronta_con_collezione
+from matching.match_prodotti import Prodotto, valuta_coppia, prodotto_da_off_json
 
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
@@ -128,6 +128,48 @@ def interroga_off_completo(barcode):
         return {"success": False}
 
 
+def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_escluso, max_risultati=30):
+    """Cerca su OFF altri prodotti nella stessa categoria specifica (es.
+    'en:durum-wheat-spaghetti'), escludendo la marca e il barcode di
+    partenza. Usato per trovare da soli i possibili equivalenti, senza che
+    l'utente debba cercarli a mano uno per uno."""
+    if not categoria_tag:
+        return []
+
+    url = "https://world.openfoodfacts.org/cgi/search.pl"
+    params = {
+        "tagtype_0": "categories",
+        "tag_contains_0": "contains",
+        "tag_0": categoria_tag,
+        "tagtype_1": "countries",
+        "tag_contains_1": "contains",
+        "tag_1": "italy",
+        "json": 1,
+        "page_size": max_risultati,
+        "sort_by": "unique_scans_n",
+        "fields": "code,product_name,brands,manufacturing_places,ingredients_text_it,ingredients_text,categories_tags",
+    }
+    try:
+        res = requests.get(url, headers=HEADERS, params=params, timeout=15)
+        if res.status_code != 200:
+            return []
+        prodotti = res.json().get("products", [])
+    except requests.RequestException:
+        return []
+
+    marca_esclusa_norm = (marca_esclusa or "").strip().lower()
+    candidati = []
+    for p in prodotti:
+        if p.get("code") == barcode_escluso:
+            continue
+        if (p.get("brands") or "").strip().lower() == marca_esclusa_norm:
+            continue
+        prodotto = prodotto_da_off_json(p)
+        if prodotto:
+            candidati.append(prodotto)
+    return candidati
+
+
 def costruisci_prodotto(barcode, nome, marca, bollino, info_off):
     """Crea l'oggetto Prodotto usato dal modulo di matching."""
     return Prodotto(
@@ -202,14 +244,23 @@ if testo_ricerca:
             barcode, nome_completo, info_prodotto["marca"], bollino_pulito, info_prodotto
         )
 
-        corrispondenze = confronta_con_collezione(
-            prodotto_corrente, st.session_state.collezione, soglia_ingredienti=soglia_ingredienti
-        )
+        categorie = info_prodotto.get("categorie", [])
+        categoria_specifica = categorie[-1] if categorie else None
+
+        with st.spinner("Cerco possibili equivalenti..."):
+            candidati = cerca_candidati_stessa_categoria(
+                categoria_specifica, info_prodotto["marca"], barcode
+            )
+            corrispondenze = [
+                c for cand in candidati
+                if (c := valuta_coppia(prodotto_corrente, cand, soglia_ingredienti))
+            ]
+            corrispondenze.sort(key=lambda c: c.score_finale, reverse=True)
 
         if corrispondenze:
             st.balloons()
-            st.success("🎯 **MATCH trovato!**")
-            for c in corrispondenze:
+            st.success("🎯 **Guarda anche:**")
+            for c in corrispondenze[:5]:
                 st.write(
                     f"- **{c.prodotto_b.marca}** — {c.prodotto_b.nome} "
                     f"(ingredienti: {c.score_ingredienti}% · "
@@ -217,7 +268,7 @@ if testo_ricerca:
                     f"score: {c.score_finale}%)"
                 )
         else:
-            st.caption("Nessuna corrispondenza (per ora) con altri prodotti cercati in questa sessione.")
+            st.caption("Nessun equivalente trovato con questa soglia.")
 
         st.session_state.collezione.append(prodotto_corrente)
 
