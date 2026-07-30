@@ -38,9 +38,14 @@ class MatchCandidato:
 
 
 def normalizza_ingredienti(testo: str) -> str:
-    """Pulizia base: minuscolo, rimozione percentuali/numeri, spazi multipli."""
+    """Pulizia: minuscolo, rimozione percentuali/numeri, e taglio delle
+    parti di 'provenienza'/'tracce' che non fanno parte della vera ricetta
+    (es. 'Paese di coltivazione...', 'Può contenere...') così due prodotti
+    con stessa ricetta ma metadati diversi vengono comunque riconosciuti."""
     import re
     testo = testo.lower()
+    # taglia via le sezioni di provenienza/tracce, che non descrivono la ricetta
+    testo = re.split(r"può contenere|paese di (coltivazione|molitura)|origine", testo)[0]
     testo = re.sub(r"\d+([.,]\d+)?\s*%?", "", testo)
     testo = re.sub(r"[^\w\s,]", " ", testo)
     testo = re.sub(r"\s+", " ", testo).strip()
@@ -68,8 +73,10 @@ def calcola_similarita_ingredienti(a: Prodotto, b: Prodotto) -> float:
     ing_b = normalizza_ingredienti(b.ingredienti)
     if not ing_a or not ing_b:
         return 0.0
-    # token_sort_ratio gestisce bene ordini diversi degli ingredienti
-    return fuzz.token_sort_ratio(ing_a, ing_b)
+    # token_set_ratio gestisce bene il caso in cui un testo è più corto
+    # ma comunque contenuto nell'altro (es. "semola di grano duro" vs
+    # "semola di grano duro, acqua")
+    return fuzz.token_set_ratio(ing_a, ing_b)
 
 
 def prodotto_da_off_json(dati: dict) -> Prodotto | None:
