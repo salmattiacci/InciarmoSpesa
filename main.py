@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import re
 
-from matching.match_prodotti import Prodotto, valuta_coppia, prodotto_da_off_json
+from matching.match_prodotti import Prodotto, valuta_coppia, prodotto_da_off_json, calcola_similarita_ingredienti
 
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
@@ -128,6 +128,22 @@ def interroga_off_completo(barcode):
         return {"success": False}
 
 
+def normalizza_marca(marca):
+    """Prende solo il primo brand (se separati da virgola) e normalizza
+    maiuscole/spazi, per confrontare in modo affidabile."""
+    primo = (marca or "").split(",")[0].strip().lower()
+    return primo
+
+
+def stessa_marca(marca_a, marca_b):
+    """True se le due marche sono uguali o una è contenuta nell'altra
+    (es. 'De Cecco' vs 'F.lli De Cecco di Filippo' sono la stessa azienda)."""
+    a, b = normalizza_marca(marca_a), normalizza_marca(marca_b)
+    if not a or not b:
+        return False
+    return a == b or a in b or b in a
+
+
 def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_escluso, max_risultati=30):
     """Cerca su OFF altri prodotti nella stessa categoria specifica (es.
     'en:durum-wheat-spaghetti'), escludendo la marca e il barcode di
@@ -157,12 +173,11 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
     except requests.RequestException:
         return []
 
-    marca_esclusa_norm = (marca_esclusa or "").strip().lower()
     candidati = []
     for p in prodotti:
         if p.get("code") == barcode_escluso:
             continue
-        if (p.get("brands") or "").strip().lower() == marca_esclusa_norm:
+        if stessa_marca(p.get("brands"), marca_esclusa):
             continue
         prodotto = prodotto_da_off_json(p)
         if prodotto:
@@ -251,6 +266,13 @@ if testo_ricerca:
             candidati = cerca_candidati_stessa_categoria(
                 categoria_specifica, info_prodotto["marca"], barcode
             )
+            # calcolo lo score di ogni candidato, anche sotto soglia, per il debug
+            tutti_gli_score = []
+            for cand in candidati:
+                score_ing = calcola_similarita_ingredienti(prodotto_corrente, cand)
+                tutti_gli_score.append((cand, score_ing))
+            tutti_gli_score.sort(key=lambda t: t[1], reverse=True)
+
             corrispondenze = [
                 c for cand in candidati
                 if (c := valuta_coppia(prodotto_corrente, cand, soglia_ingredienti))
@@ -282,6 +304,15 @@ if testo_ricerca:
                 st.write(f"Categorie: {p.categorie or 'nessuna'}")
                 st.write(f"Ingredienti: {p.ingredienti or 'nessuno'}")
                 st.write("---")
+
+        with st.expander(f"🧪 Debug candidati confrontati ({len(candidati)} trovati nella stessa categoria)"):
+            if not tutti_gli_score:
+                st.write("Nessun candidato trovato su OFF per questa categoria/paese.")
+            for cand, score_ing in tutti_gli_score[:15]:
+                st.write(
+                    f"- **{cand.marca}** — {cand.nome} → similarità ingredienti: {round(score_ing, 1)}% "
+                    f"(ingredienti: {cand.ingredienti[:80] or 'vuoto'}...)"
+                )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-        
+            
