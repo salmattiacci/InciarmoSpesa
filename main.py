@@ -10,6 +10,26 @@ HEADERS = {
     "User-Agent": "InciarmoDellaSpesaApp/2.0 (contatto: inciarmospesa_app@gmail.com)"
 }
 
+# Marchi del distributore (private label) più diffusi in Italia. Usati per
+# dare risalto ai match "wow" (marca famosa -> private label), che sono
+# l'obiettivo principale dell'app, invece che marca famosa vs marca famosa.
+MARCHI_PRIVATE_LABEL = {
+    "selex", "coop", "conad", "esselunga", "carrefour", "decò", "deco",
+    "pam", "pam panorama", "despar", "eurospin", "lidl", "combino",
+    "aldi", "sigma", "crai", "todis", "il viaggiator goloso",
+    "fior fiore", "fior fiore coop", "con.sorriso", "auchan", "iper",
+    "iper la grande i", "bennet", "md", "in's mercato", "ins", "tigros",
+    "tuodì", "tuodi", "penny", "penny market", "gigante", "prima prezzo",
+    "primia", "u", "u saveurs", "rewe beste wahl", "everyday", "solo formaggi",
+}
+
+
+def e_private_label(marca):
+    """True se la marca è (con buona probabilità) un marchio del
+    distributore/private label italiano."""
+    marca_norm = (marca or "").split(",")[0].strip().lower()
+    return marca_norm in MARCHI_PRIVATE_LABEL
+
 
 def pulisci_bollino(testo):
     if not testo:
@@ -347,4 +367,4 @@ if testo_ricerca:
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-    
+        
