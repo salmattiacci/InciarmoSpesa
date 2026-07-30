@@ -207,6 +207,13 @@ if testo_ricerca:
         with st.expander(f"📋 Prodotti cercati in questa sessione ({len(st.session_state.collezione)})"):
             for p in st.session_state.collezione:
                 st.write(f"- {p.marca} — {p.nome} (bollino: {p.stabilimento or 'n/d'})")
+
+        with st.expander("🔍 Debug dati grezzi (ingredienti/categorie)"):
+            for p in st.session_state.collezione:
+                st.markdown(f"**{p.marca} — {p.nome}**")
+                st.write(f"Categorie: {p.categorie or 'nessuna'}")
+                st.write(f"Ingredienti: {p.ingredienti or 'nessuno'}")
+                st.write("---")
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
         
