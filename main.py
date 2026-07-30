@@ -1,16 +1,14 @@
 import streamlit as st
 import requests
 import re
-from bs4 import BeautifulSoup
+
+from matching.match_prodotti import Prodotto, confronta_con_collezione
 
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
 HEADERS = {
     "User-Agent": "InciarmoDellaSpesaApp/2.0 (contatto: inciarmospesa_app@gmail.com)"
 }
-
-# Aggiorna questo link ogni settimana con il volantino corrente
-URL_VOLANTINO = "https://deco.volantinopiu.com/volantino2793400pv615.html"
 
 
 def pulisci_bollino(testo):
@@ -23,40 +21,13 @@ def pulisci_bollino(testo):
     return re.sub(r'[^A-Z0-9]', '', testo_str)[:10]
 
 
-@st.cache_data(ttl=3600)  # ricarica il volantino al massimo una volta all'ora
-def scrape_volantino_deco(url):
-    """Scarica il volantino e restituisce lista di {prezzo, descrizione}."""
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException:
-        return []
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-    risultati = []
-    for prezzo_tag in soup.find_all(string=re.compile(r"€\s*\d+[.,]\d{2}")):
-        contenitore = prezzo_tag.find_parent("div") or prezzo_tag.find_parent()
-        testo = contenitore.get_text(" ", strip=True) if contenitore else ""
-        risultati.append({"prezzo": prezzo_tag.strip(), "descrizione": testo[:150]})
-    return risultati
-
-
-def trova_prezzo_volantino(nome_prodotto, prodotti_volantino):
-    if not nome_prodotto:
-        return None, None
-    nome_lower = nome_prodotto.lower()
-    for p in prodotti_volantino:
-        if nome_lower in p["descrizione"].lower():
-            return p["prezzo"], p["descrizione"]
-    return None, None
-
-
 URL_CATALOGO_DECO = "https://supermercatideco.it/manager/includer.php"
 SHOP_ID_DECO = "38774"  # verifica se corrisponde al tuo punto vendita
 
 
 def cerca_prodotto_deco(nome_prodotto):
-    """Cerca live nel catalogo Decò (no cache, dati sempre freschi)."""
+    """Cerca live nel catalogo Decò (usato solo per identificare il prodotto
+    quando OFF non lo trova, non per il prezzo)."""
     if not nome_prodotto:
         return None
 
@@ -99,41 +70,6 @@ def cerca_prodotto_deco(nome_prodotto):
     return None
 
 
-def ottieni_prezzo_reale_definitivo(barcode, nome_prodotto):
-    """
-    1. Prova Open Prices (database collaborativo di prezzi reali).
-    2. Come ultima spiaggia, cerca nel volantino Decò corrente.
-    Restituisce solo ed esclusivamente prezzi reali, senza stime.
-    (Il catalogo Decò live NON espone il prezzo senza una sessione con
-    negozio selezionato, quindi non viene usato come fonte prezzo qui.)
-    """
-    barcode_pulito = str(barcode).strip()
-
-    # 1. TENTATIVO: API Open Prices
-    url_prices = f"https://prices.openfoodfacts.org/api/v1/prices?product_code={barcode_pulito}"
-    try:
-        response = requests.get(url_prices, headers=HEADERS, timeout=8)
-        if response.status_code == 200:
-            items = response.json().get("items", [])
-            if items:
-                ultimo_item = items[0]
-                prezzo = ultimo_item.get("price")
-                store = ultimo_item.get("location_name", "Supermercato")
-                data_agg = (ultimo_item.get("created_at") or "")[:10]
-                if prezzo is not None:
-                    return f"{float(prezzo):.2f} € (Trovato presso: {store} - Rilevato il {data_agg})"
-    except requests.RequestException:
-        pass
-
-    # 2. TENTATIVO: volantino Decò corrente
-    prodotti_volantino = scrape_volantino_deco(URL_VOLANTINO)
-    prezzo_volantino, descrizione = trova_prezzo_volantino(nome_prodotto, prodotti_volantino)
-    if prezzo_volantino:
-        return f"{prezzo_volantino} (Volantino Decò: {descrizione})"
-
-    return "Prezzo reale non ancora mappato nei database aperti 🏪"
-
-
 def e_barcode(testo):
     return testo.strip().isdigit() and 8 <= len(testo.strip()) <= 14
 
@@ -153,19 +89,8 @@ def cerca_barcode_per_nome(nome):
     return None
 
 
-def controlla_corrispondenza_in_sessione(nuovo_prodotto):
-    """Confronta il bollino CE del prodotto appena cercato con quelli già
-    cercati in questa sessione (salvati in memoria, nessun file)."""
-    if not nuovo_prodotto["bollino"]:
-        return []
-    return [
-        p for p in st.session_state.collezione
-        if p["bollino"] == nuovo_prodotto["bollino"] and p["marca"] != nuovo_prodotto["marca"]
-    ]
-
-
-
 def interroga_off_completo(barcode):
+    """Recupera nome, marca, stabilimento, ingredienti e categorie da Open Food Facts."""
     url = f"https://world.openfoodfacts.net/api/v2/product/{barcode}.json"
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
@@ -177,20 +102,37 @@ def interroga_off_completo(barcode):
                     "success": True,
                     "nome": prodotto.get("product_name", "Prodotto sconosciuto"),
                     "marca": prodotto.get("brands", "Marca non indicata"),
-                    "stabilimento": prodotto.get("manufacturing_places", "")
+                    "stabilimento": prodotto.get("manufacturing_places", ""),
+                    "ingredienti": prodotto.get("ingredients_text_it") or prodotto.get("ingredients_text", ""),
+                    "categorie": prodotto.get("categories_tags", []),
                 }
         return {"success": False}
     except requests.RequestException:
         return {"success": False}
 
 
-# --- UI STREAMLIT ---
+def costruisci_prodotto(barcode, nome, marca, bollino, info_off):
+    """Crea l'oggetto Prodotto usato dal modulo di matching."""
+    return Prodotto(
+        barcode=barcode or "",
+        nome=nome,
+        marca=marca,
+        categorie=info_off.get("categorie", []),
+        ingredienti=info_off.get("ingredienti", ""),
+        stabilimento=bollino or None,
+    )
+
+
 # --- UI STREAMLIT ---
 st.title("L'Inciarmo della Spesa 🛒")
 st.subheader("Cerca per nome o barcode, confronto marca vs private label")
 
 if "collezione" not in st.session_state:
-    st.session_state.collezione = []  # lista in memoria, vive solo per questa sessione
+    st.session_state.collezione = []  # lista di Prodotto, vive solo per questa sessione
+
+soglia_ingredienti = st.slider(
+    "Soglia similarità ingredienti per considerare un match", 50, 100, 75
+)
 
 testo_ricerca = st.text_input(
     "Barcode o nome prodotto:", placeholder="Es. 8002270014901 oppure 'pasta barilla napoletana'"
@@ -206,14 +148,13 @@ if testo_ricerca:
 
         # Fallback: se OFF non ha il prodotto (tipico dei marchi privati come Decò),
         # prova a cercarlo direttamente nel catalogo Decò
-        prodotto_deco_diretto = None
         if not info_prodotto["success"] and not e_barcode(testo_ricerca):
             prodotto_deco_diretto = cerca_prodotto_deco(testo_ricerca)
             if prodotto_deco_diretto:
                 nome_trovato = prodotto_deco_diretto.get("name") or testo_ricerca
                 codice_deco = prodotto_deco_diretto.get("code")
 
-                # Con il barcode vero del prodotto Decò, proviamo OFF per lo stabilimento
+                # Con il barcode vero del prodotto Decò, proviamo OFF per stabilimento/ingredienti
                 info_off_deco = interroga_off_completo(codice_deco) if codice_deco else {"success": False}
 
                 info_prodotto = {
@@ -221,6 +162,8 @@ if testo_ricerca:
                     "nome": nome_trovato,
                     "marca": "Decò",
                     "stabilimento": info_off_deco.get("stabilimento", "") if info_off_deco["success"] else "",
+                    "ingredienti": info_off_deco.get("ingredienti", "") if info_off_deco["success"] else "",
+                    "categorie": info_off_deco.get("categorie", []) if info_off_deco["success"] else [],
                 }
                 if codice_deco:
                     barcode = codice_deco
@@ -229,40 +172,41 @@ if testo_ricerca:
         st.success("🔥 **Dati intercettati con successo!**")
 
         nome_completo = info_prodotto["nome"]
-        prezzo_live = ottieni_prezzo_reale_definitivo(barcode, nome_completo)
         bollino_pulito = pulisci_bollino(info_prodotto["stabilimento"])
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"💸 **Prezzo Reale Rilevato:**\n\n✨ {prezzo_live}")
-        with col2:
-            st.warning(f"👑 **Prodotto sul mercato:**\n\n✨ {nome_completo} [{info_prodotto['marca']}]")
+        st.warning(f"👑 **Prodotto sul mercato:**\n\n✨ {nome_completo} [{info_prodotto['marca']}]")
 
         if bollino_pulito:
             st.metric(label="🏭 Codice Stabilimento Unico (Bollino CE)", value=bollino_pulito)
         else:
             st.write("Stabilimento: **ITALIA** (Controlla il retro della confezione)")
 
-        prodotto_corrente = {
-            "barcode": barcode,
-            "nome": nome_completo,
-            "marca": info_prodotto["marca"],
-            "bollino": bollino_pulito,
-        }
+        prodotto_corrente = costruisci_prodotto(
+            barcode, nome_completo, info_prodotto["marca"], bollino_pulito, info_prodotto
+        )
 
-        corrispondenze = controlla_corrispondenza_in_sessione(prodotto_corrente)
+        corrispondenze = confronta_con_collezione(
+            prodotto_corrente, st.session_state.collezione, soglia_ingredienti=soglia_ingredienti
+        )
+
         if corrispondenze:
             st.balloons()
-            st.success("🎯 **MATCH! Stesso stabilimento di:**")
-            for p in corrispondenze:
-                st.write(f"- {p['marca']} — {p['nome']}")
-        elif bollino_pulito:
+            st.success("🎯 **MATCH trovato!**")
+            for c in corrispondenze:
+                st.write(
+                    f"- **{c.prodotto_b.marca}** — {c.prodotto_b.nome} "
+                    f"(ingredienti: {c.score_ingredienti}% · "
+                    f"stesso stabilimento: {'sì' if c.stesso_stabilimento else 'no'} · "
+                    f"score: {c.score_finale}%)"
+                )
+        else:
             st.caption("Nessuna corrispondenza (per ora) con altri prodotti cercati in questa sessione.")
 
         st.session_state.collezione.append(prodotto_corrente)
 
         with st.expander(f"📋 Prodotti cercati in questa sessione ({len(st.session_state.collezione)})"):
             for p in st.session_state.collezione:
-                st.write(f"- {p['marca']} — {p['nome']} (bollino: {p['bollino'] or 'n/d'})")
+                st.write(f"- {p.marca} — {p.nome} (bollino: {p.stabilimento or 'n/d'})")
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
+        
