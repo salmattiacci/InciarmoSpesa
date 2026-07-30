@@ -144,34 +144,60 @@ def stessa_marca(marca_a, marca_b):
     return a == b or a in b or b in a
 
 
+def _query_off_search(params, max_risultati):
+    url = "https://world.openfoodfacts.org/api/v2/search"
+    try:
+        res = requests.get(url, headers=HEADERS, params=params, timeout=15)
+        if res.status_code != 200:
+            return [], f"HTTP {res.status_code}"
+        return res.json().get("products", []), None
+    except requests.RequestException as e:
+        return [], str(e)
+
+
 def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_escluso, max_risultati=30):
     """Cerca su OFF altri prodotti nella stessa categoria specifica (es.
     'en:durum-wheat-spaghetti'), escludendo la marca e il barcode di
     partenza. Usato per trovare da soli i possibili equivalenti, senza che
     l'utente debba cercarli a mano uno per uno."""
-    if not categoria_tag:
-        return []
+    diagnostica = {"categoria_en": None, "grezzi_con_italia": 0, "grezzi_senza_italia": 0, "errore": None}
 
-    url = "https://world.openfoodfacts.org/cgi/search.pl"
-    params = {
-        "tagtype_0": "categories",
-        "tag_contains_0": "contains",
-        "tag_0": categoria_tag,
-        "tagtype_1": "countries",
-        "tag_contains_1": "contains",
-        "tag_1": "italy",
-        "json": 1,
-        "page_size": max_risultati,
-        "sort_by": "unique_scans_n",
-        "fields": "code,product_name,brands,manufacturing_places,ingredients_text_it,ingredients_text,categories_tags",
-    }
-    try:
-        res = requests.get(url, headers=HEADERS, params=params, timeout=15)
-        if res.status_code != 200:
-            return []
-        prodotti = res.json().get("products", [])
-    except requests.RequestException:
-        return []
+    if not categoria_tag:
+        return [], diagnostica
+
+    # 'en:durum-wheat-spaghetti' -> 'Durum Wheat Spaghetti' (formato atteso da categories_tags_en)
+    nome_categoria_en = categoria_tag.split(":", 1)[-1].replace("-", " ").title()
+    diagnostica["categoria_en"] = nome_categoria_en
+
+    fields = "code,product_name,brands,manufacturing_places,ingredients_text_it,ingredients_text,categories_tags"
+
+    prodotti, errore = _query_off_search(
+        {
+            "categories_tags_en": nome_categoria_en,
+            "countries_tags_en": "Italy",
+            "page_size": max_risultati,
+            "sort_by": "unique_scans_n",
+            "fields": fields,
+        },
+        max_risultati,
+    )
+    diagnostica["grezzi_con_italia"] = len(prodotti)
+    diagnostica["errore"] = errore
+
+    # Fallback: se col filtro Italia non troviamo nulla, riproviamo senza
+    # (meglio un candidato non-italiano che nessun candidato)
+    if not prodotti:
+        prodotti, errore = _query_off_search(
+            {
+                "categories_tags_en": nome_categoria_en,
+                "page_size": max_risultati,
+                "sort_by": "unique_scans_n",
+                "fields": fields,
+            },
+            max_risultati,
+        )
+        diagnostica["grezzi_senza_italia"] = len(prodotti)
+        diagnostica["errore"] = diagnostica["errore"] or errore
 
     candidati = []
     for p in prodotti:
@@ -182,7 +208,7 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
         prodotto = prodotto_da_off_json(p)
         if prodotto:
             candidati.append(prodotto)
-    return candidati
+    return candidati, diagnostica
 
 
 def costruisci_prodotto(barcode, nome, marca, bollino, info_off):
@@ -263,7 +289,7 @@ if testo_ricerca:
         categoria_specifica = categorie[-1] if categorie else None
 
         with st.spinner("Cerco possibili equivalenti..."):
-            candidati = cerca_candidati_stessa_categoria(
+            candidati, diagnostica = cerca_candidati_stessa_categoria(
                 categoria_specifica, info_prodotto["marca"], barcode
             )
             # calcolo lo score di ogni candidato, anche sotto soglia, per il debug
@@ -306,6 +332,12 @@ if testo_ricerca:
                 st.write("---")
 
         with st.expander(f"🧪 Debug candidati confrontati ({len(candidati)} trovati nella stessa categoria)"):
+            st.write(f"Categoria OFF usata per la ricerca: `{diagnostica['categoria_en']}`")
+            st.write(f"Risultati grezzi con filtro Italia: {diagnostica['grezzi_con_italia']}")
+            if diagnostica["grezzi_senza_italia"]:
+                st.write(f"Risultati grezzi senza filtro Italia (fallback usato): {diagnostica['grezzi_senza_italia']}")
+            if diagnostica["errore"]:
+                st.error(f"Errore chiamata OFF: {diagnostica['errore']}")
             if not tutti_gli_score:
                 st.write("Nessun candidato trovato su OFF per questa categoria/paese.")
             for cand, score_ing in tutti_gli_score[:15]:
@@ -315,4 +347,4 @@ if testo_ricerca:
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-            
+    
