@@ -367,4 +367,4 @@ if testo_ricerca:
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-        
+    
