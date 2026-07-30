@@ -1,5 +1,6 @@
 """
-InciarmoSpesa - Matching prodotti (marca vs private label).
+InciarmoSpesa - Matching prodotti (marca vs private label)
+senza dipendenza dal prezzo.
 
 Logica:
 1. Filtra prodotti per stessa categoria (evita confronti insensati)
@@ -46,8 +47,20 @@ def normalizza_ingredienti(testo: str) -> str:
     return testo
 
 
+def normalizza_categoria(tag: str) -> str:
+    """Toglie il prefisso lingua (es. 'en:', 'it:') così categorie
+    equivalenti in lingue diverse vengono riconosciute come uguali."""
+    return tag.split(":", 1)[-1] if ":" in tag else tag
+
+
 def stessa_categoria(a: Prodotto, b: Prodotto) -> bool:
-    return bool(set(a.categorie) & set(b.categorie))
+    # Se a uno dei due prodotti mancano le categorie, non blocchiamo il
+    # confronto: lasciamo decidere alla similarità ingredienti.
+    if not a.categorie or not b.categorie:
+        return True
+    cat_a = {normalizza_categoria(c) for c in a.categorie}
+    cat_b = {normalizza_categoria(c) for c in b.categorie}
+    return bool(cat_a & cat_b)
 
 
 def calcola_similarita_ingredienti(a: Prodotto, b: Prodotto) -> float:
@@ -186,5 +199,5 @@ if __name__ == "__main__":
             f"| ingredienti={r.score_ingredienti} "
             f"| stesso stabilimento={r.stesso_stabilimento} "
             f"| score finale={r.score_finale}"
-)
-      
+        )
+        
