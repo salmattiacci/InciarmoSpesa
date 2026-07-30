@@ -75,18 +75,35 @@ def e_barcode(testo):
 
 
 def cerca_barcode_per_nome(nome):
-    """Trova il barcode di un prodotto a partire dal nome (ricerca OFF)."""
+    """Trova il barcode di un prodotto a partire dal nome (ricerca OFF).
+    Privilegia risultati venduti/prodotti in Italia, per evitare di pescare
+    varianti estere (es. senza glutine francese) che hanno ricette diverse."""
     url = "https://world.openfoodfacts.org/cgi/search.pl"
-    params = {"search_terms": nome, "search_simple": 1, "action": "process", "json": 1, "page_size": 1}
+    params = {
+        "search_terms": nome,
+        "search_simple": 1,
+        "action": "process",
+        "json": 1,
+        "page_size": 10,
+        "fields": "code,countries_tags",
+    }
     try:
         res = requests.get(url, headers=HEADERS, params=params, timeout=15)
-        if res.status_code == 200:
-            prodotti = res.json().get("products", [])
-            if prodotti:
-                return prodotti[0].get("code")
+        if res.status_code != 200:
+            return None
+        prodotti = res.json().get("products", [])
+        if not prodotti:
+            return None
+
+        # 1° tentativo: primo prodotto venduto/prodotto in Italia
+        for p in prodotti:
+            if "en:italy" in (p.get("countries_tags") or []):
+                return p.get("code")
+
+        # fallback: se nessuno risulta italiano, prendi comunque il primo risultato
+        return prodotti[0].get("code")
     except requests.RequestException:
-        pass
-    return None
+        return None
 
 
 def interroga_off_completo(barcode):
