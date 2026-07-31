@@ -31,6 +31,15 @@ def e_private_label(marca):
     return marca_norm in MARCHI_PRIVATE_LABEL
 
 
+# Sottoinsieme usato per la query dedicata: interroghiamo OFF un marchio
+# alla volta, quindi lo teniamo corto per non rallentare troppo la ricerca.
+# I più diffusi nella grande distribuzione italiana.
+MARCHI_PRIVATE_LABEL_PRIORITARI = [
+    "coop", "conad", "esselunga", "selex", "decò", "eurospin",
+    "lidl", "pam", "carrefour", "despar",
+]
+
+
 def pulisci_bollino(testo):
     if not testo:
         return ""
@@ -241,16 +250,21 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
     # Query dedicata: ordinare per popolarità globale (unique_scans_n)
     # penalizza sempre i marchi private label italiani, scansionati molto
     # meno nel mondo dei grandi brand internazionali. Li cerchiamo quindi
-    # in modo esplicito, per marca, così compaiono comunque tra i candidati.
-    prodotti_private_label, _ = _query_off_search(
-        {
-            "categories_tags_en": nome_categoria_en,
-            "brands_tags": ",".join(sorted(MARCHI_PRIVATE_LABEL)),
-            "page_size": max_risultati,
-            "fields": fields,
-        },
-        max_risultati,
-    )
+    # in modo esplicito, marchio per marchio (brands_tags con più valori
+    # separati da virgola sembra funzionare in AND su OFF, non OR, quindi
+    # una query unica con tutti i marchi non restituisce mai nulla).
+    prodotti_private_label = []
+    for marca_pl in MARCHI_PRIVATE_LABEL_PRIORITARI:
+        risultati_marca, _ = _query_off_search(
+            {
+                "categories_tags_en": nome_categoria_en,
+                "brands_tags": marca_pl,
+                "page_size": 10,
+                "fields": fields,
+            },
+            10,
+        )
+        prodotti_private_label.extend(risultati_marca)
     diagnostica["grezzi_private_label"] = len(prodotti_private_label)
 
     codici_gia_visti = {p.get("code") for p in prodotti}
@@ -429,4 +443,4 @@ if testo_ricerca:
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-                
+    
