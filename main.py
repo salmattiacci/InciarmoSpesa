@@ -180,7 +180,13 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
     'en:durum-wheat-spaghetti'), escludendo la marca e il barcode di
     partenza. Usato per trovare da soli i possibili equivalenti, senza che
     l'utente debba cercarli a mano uno per uno."""
-    diagnostica = {"categoria_en": None, "grezzi_con_italia": 0, "grezzi_senza_italia": 0, "errore": None}
+    diagnostica = {
+        "categoria_en": None,
+        "grezzi_con_italia": 0,
+        "grezzi_senza_italia": 0,
+        "grezzi_private_label": 0,
+        "errore": None,
+    }
 
     if not categoria_tag:
         return [], diagnostica
@@ -201,6 +207,19 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
         },
         max_risultati,
     )
+    # Un errore (es. 503 temporaneo) va distinto da "zero risultati reali":
+    # se è un errore ritento una volta prima di rinunciare al filtro Italia.
+    if errore and not prodotti:
+        prodotti, errore = _query_off_search(
+            {
+                "categories_tags_en": nome_categoria_en,
+                "countries_tags_en": "Italy",
+                "page_size": max_risultati,
+                "sort_by": "unique_scans_n",
+                "fields": fields,
+            },
+            max_risultati,
+        )
     diagnostica["grezzi_con_italia"] = len(prodotti)
     diagnostica["errore"] = errore
 
@@ -218,6 +237,27 @@ def cerca_candidati_stessa_categoria(categoria_tag, marca_esclusa, barcode_esclu
         )
         diagnostica["grezzi_senza_italia"] = len(prodotti)
         diagnostica["errore"] = diagnostica["errore"] or errore
+
+    # Query dedicata: ordinare per popolarità globale (unique_scans_n)
+    # penalizza sempre i marchi private label italiani, scansionati molto
+    # meno nel mondo dei grandi brand internazionali. Li cerchiamo quindi
+    # in modo esplicito, per marca, così compaiono comunque tra i candidati.
+    prodotti_private_label, _ = _query_off_search(
+        {
+            "categories_tags_en": nome_categoria_en,
+            "brands_tags": ",".join(sorted(MARCHI_PRIVATE_LABEL)),
+            "page_size": max_risultati,
+            "fields": fields,
+        },
+        max_risultati,
+    )
+    diagnostica["grezzi_private_label"] = len(prodotti_private_label)
+
+    codici_gia_visti = {p.get("code") for p in prodotti}
+    for p in prodotti_private_label:
+        if p.get("code") not in codici_gia_visti:
+            prodotti.append(p)
+            codici_gia_visti.add(p.get("code"))
 
     candidati = []
     for p in prodotti:
@@ -376,6 +416,7 @@ if testo_ricerca:
             st.write(f"Risultati grezzi con filtro Italia: {diagnostica['grezzi_con_italia']}")
             if diagnostica["grezzi_senza_italia"]:
                 st.write(f"Risultati grezzi senza filtro Italia (fallback usato): {diagnostica['grezzi_senza_italia']}")
+            st.write(f"Risultati dalla query dedicata private label: {diagnostica['grezzi_private_label']}")
             if diagnostica["errore"]:
                 st.error(f"Errore chiamata OFF: {diagnostica['errore']}")
             if not tutti_gli_score:
@@ -388,4 +429,4 @@ if testo_ricerca:
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-            
+                
