@@ -2,7 +2,13 @@ import streamlit as st
 import requests
 import re
 
-from matching.match_prodotti import Prodotto, valuta_coppia, prodotto_da_off_json, calcola_similarita_ingredienti
+from matching.match_prodotti import (
+    Prodotto,
+    valuta_coppia,
+    prodotto_da_off_json,
+    calcola_similarita_ingredienti,
+    calcola_similarita_stabilimento,
+)
 
 st.set_page_config(page_title="L'Inciarmo della Spesa", page_icon="🛒", layout="centered")
 
@@ -47,7 +53,11 @@ def pulisci_bollino(testo):
     match = re.search(r'(IT\s*\d+[\s*\/]*\d*\s*CE|\d+[\s*\/]*\d*\s*CE)', testo_str)
     if match:
         return re.sub(r'\s+', '', match.group(1))
-    return re.sub(r'[^A-Z0-9]', '', testo_str)[:10]
+    # Nessun vero bollino CE trovato: teniamo più testo (indirizzo/ragione
+    # sociale ripulita) invece di troncare a 10 caratteri, altrimenti il
+    # confronto fuzzy con lo stabilimento di un altro prodotto non ha
+    # abbastanza informazione per funzionare.
+    return re.sub(r'[^A-Z0-9 ]', '', testo_str).strip()[:80]
 
 
 URL_CATALOGO_DECO = "https://supermercatideco.it/manager/includer.php"
@@ -373,8 +383,9 @@ if testo_ricerca:
             tutti_gli_score = []
             for cand in candidati:
                 score_ing = calcola_similarita_ingredienti(prodotto_corrente, cand)
-                tutti_gli_score.append((cand, score_ing))
-            tutti_gli_score.sort(key=lambda t: t[1], reverse=True)
+                score_stab = calcola_similarita_stabilimento(prodotto_corrente, cand)
+                tutti_gli_score.append((cand, score_ing, score_stab))
+            tutti_gli_score.sort(key=lambda t: max(t[1], t[2]), reverse=True)
 
             corrispondenze = [
                 c for cand in candidati
@@ -393,7 +404,8 @@ if testo_ricerca:
                     st.write(
                         f"- 🛒 **{c.prodotto_b.marca}** — {c.prodotto_b.nome} "
                         f"(ingredienti: {c.score_ingredienti}% · "
-                        f"stesso stabilimento: {'sì' if c.stesso_stabilimento else 'no'} · "
+                        f"stabilimento: {c.score_stabilimento}% "
+                        f"{'✅ stesso' if c.stesso_stabilimento else ''} · "
                         f"score: {c.score_finale}%)"
                     )
 
@@ -403,7 +415,8 @@ if testo_ricerca:
                         st.write(
                             f"- {c.prodotto_b.marca} — {c.prodotto_b.nome} "
                             f"(ingredienti: {c.score_ingredienti}% · "
-                            f"stesso stabilimento: {'sì' if c.stesso_stabilimento else 'no'} · "
+                            f"stabilimento: {c.score_stabilimento}% "
+                            f"{'✅ stesso' if c.stesso_stabilimento else ''} · "
                             f"score: {c.score_finale}%)"
                         )
 
@@ -435,12 +448,12 @@ if testo_ricerca:
                 st.error(f"Errore chiamata OFF: {diagnostica['errore']}")
             if not tutti_gli_score:
                 st.write("Nessun candidato trovato su OFF per questa categoria/paese.")
-            for cand, score_ing in tutti_gli_score[:15]:
+            for cand, score_ing, score_stab in tutti_gli_score[:15]:
                 st.write(
-                    f"- **{cand.marca}** — {cand.nome} → similarità ingredienti: {round(score_ing, 1)}% "
-                    f"· stabilimento: `{cand.stabilimento or 'n/d'}` "
+                    f"- **{cand.marca}** — {cand.nome} → ingredienti: {round(score_ing, 1)}% "
+                    f"· stabilimento: {round(score_stab, 1)}% (`{cand.stabilimento or 'n/d'}`) "
                     f"(ingredienti: {cand.ingredienti[:80] or 'vuoto'}...)"
                 )
     else:
         st.error("Prodotto non identificato nei database di tracciamento rapidi.")
-    
+        
