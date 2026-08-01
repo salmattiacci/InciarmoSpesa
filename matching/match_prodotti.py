@@ -33,6 +33,7 @@ class MatchCandidato:
     prodotto_a: Prodotto
     prodotto_b: Prodotto
     score_ingredienti: float
+    score_stabilimento: float
     stesso_stabilimento: bool
     score_finale: float
 
@@ -79,6 +80,17 @@ def calcola_similarita_ingredienti(a: Prodotto, b: Prodotto) -> float:
     return fuzz.token_set_ratio(ing_a, ing_b)
 
 
+def calcola_similarita_stabilimento(a: Prodotto, b: Prodotto) -> float:
+    """Confronto fuzzy tra i due campi stabilimento (bollino CE pulito o
+    indirizzo/ragione sociale ripulita). Non serve più l'uguaglianza
+    esatta: due varianti dello stesso indirizzo (es. 'Rummo SpA' vs
+    'Rummo S.p.A. Benevento') ora vengono comunque riconosciute come
+    simili invece di risultare sempre diverse."""
+    if not a.stabilimento or not b.stabilimento:
+        return 0.0
+    return fuzz.token_set_ratio(a.stabilimento, b.stabilimento)
+
+
 def prodotto_da_off_json(dati: dict) -> Prodotto | None:
     """
     Costruisce un Prodotto a partire dalla risposta JSON di Open Food Facts
@@ -112,27 +124,42 @@ def valuta_coppia(
     a: Prodotto,
     b: Prodotto,
     soglia_ingredienti: float = 75.0,
+    soglia_stabilimento: float = 80.0,
     boost_stabilimento: float = 15.0,
 ) -> MatchCandidato | None:
-    """Valuta una singola coppia di prodotti. Ritorna None se non è un match valido."""
+    """Valuta una singola coppia di prodotti. Ritorna None se non è un match valido.
+
+    Il match scatta se ALMENO UNO tra ingredienti e stabilimento supera la
+    propria soglia — non serve più che siano gli ingredienti a decidere da
+    soli. Per prodotti a ricetta fissa (es. pasta: sempre semola+acqua per
+    chiunque) gli ingredienti non sono un segnale utile, quindi deve poter
+    bastare lo stabilimento uguale a far scattare il match."""
     if a.marca == b.marca:
         return None
     if not stessa_categoria(a, b):
         return None
 
     score_ing = calcola_similarita_ingredienti(a, b)
-    if score_ing < soglia_ingredienti:
+    score_stab = calcola_similarita_stabilimento(a, b)
+    stesso_stab = score_stab >= soglia_stabilimento
+
+    match_su_ingredienti = score_ing >= soglia_ingredienti
+    if not match_su_ingredienti and not stesso_stab:
         return None
 
-    stesso_stab = bool(
-        a.stabilimento and b.stabilimento and a.stabilimento == b.stabilimento
-    )
-    score_finale = min(100.0, score_ing + (boost_stabilimento if stesso_stab else 0))
+    score_finale = score_ing
+    if stesso_stab:
+        score_finale = min(100.0, score_finale + boost_stabilimento)
+        # se il match è "portato" solo dallo stabilimento (ingredienti
+        # sotto soglia, tipico della pasta), non lasciamo che uno score
+        # ingredienti basso schiacci lo score finale verso il basso
+        score_finale = max(score_finale, score_stab)
 
     return MatchCandidato(
         prodotto_a=a,
         prodotto_b=b,
         score_ingredienti=round(score_ing, 1),
+        score_stabilimento=round(score_stab, 1),
         stesso_stabilimento=stesso_stab,
         score_finale=round(score_finale, 1),
     )
@@ -141,12 +168,13 @@ def valuta_coppia(
 def trova_match(
     prodotti: list[Prodotto],
     soglia_ingredienti: float = 75.0,
+    soglia_stabilimento: float = 80.0,
     boost_stabilimento: float = 15.0,
 ) -> list[MatchCandidato]:
     """Confronta tutti i prodotti di una lista tra loro (a coppie)."""
     candidati = [
         c for a, b in combinations(prodotti, 2)
-        if (c := valuta_coppia(a, b, soglia_ingredienti, boost_stabilimento))
+        if (c := valuta_coppia(a, b, soglia_ingredienti, soglia_stabilimento, boost_stabilimento))
     ]
     return sorted(candidati, key=lambda c: c.score_finale, reverse=True)
 
@@ -155,6 +183,7 @@ def confronta_con_collezione(
     nuovo: Prodotto,
     collezione: list[Prodotto],
     soglia_ingredienti: float = 75.0,
+    soglia_stabilimento: float = 80.0,
     boost_stabilimento: float = 15.0,
 ) -> list[MatchCandidato]:
     """
@@ -164,7 +193,7 @@ def confronta_con_collezione(
     """
     candidati = [
         c for esistente in collezione
-        if (c := valuta_coppia(nuovo, esistente, soglia_ingredienti, boost_stabilimento))
+        if (c := valuta_coppia(nuovo, esistente, soglia_ingredienti, soglia_stabilimento, boost_stabilimento))
     ]
     return sorted(candidati, key=lambda c: c.score_finale, reverse=True)
 
